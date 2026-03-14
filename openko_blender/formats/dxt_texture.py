@@ -60,7 +60,7 @@ def load(path: Path | str) -> DxtTexture:
     width = r.read_int32()
     height = r.read_int32()
     raw_format = r.read_int32()
-    has_mipmap = r.read_bool()
+    has_mipmap = bool(r.read_int32())  # Win32 BOOL is 4 bytes (int), not 1
 
     try:
         fmt = DxtFormat(raw_format)
@@ -159,27 +159,27 @@ def _read_u(buf: BytesIO, n: int) -> int:
 
 
 def _decompress_dxt1(buf: BytesIO, width: int, height: int) -> bytes:
-    block_x = width // 4
-    block_y = height // 4
+    blocks_x = width // 4
+    blocks_y = height // 4
     pixels = bytearray(width * height * 4)
 
-    for row in range(block_x):
-        for col in range(block_y):
+    for by in range(blocks_y):
+        for bx in range(blocks_x):
             c0 = _read_u(buf, 2)
             c1 = _read_u(buf, 2)
             ctable = _read_u(buf, 4)
-            _fill_dxt1_block(pixels, row * 4, col * 4, c0, c1, ctable, width, 255)
+            _fill_dxt1_block(pixels, bx * 4, by * 4, c0, c1, ctable, width, height, 255)
 
     return bytes(pixels)
 
 
 def _decompress_dxt5(buf: BytesIO, width: int, height: int) -> bytes:
-    block_x = width // 4
-    block_y = height // 4
+    blocks_x = width // 4
+    blocks_y = height // 4
     pixels = bytearray(width * height * 4)
 
-    for row in range(block_x):
-        for col in range(block_y):
+    for by in range(blocks_y):
+        for bx in range(blocks_x):
             a0 = _read_u(buf, 1)
             a1 = _read_u(buf, 1)
             atable = buf.read(6)
@@ -192,8 +192,8 @@ def _decompress_dxt5(buf: BytesIO, width: int, height: int) -> bytes:
             for j in range(4):
                 for i in range(4):
                     alpha = _get_alpha(j, i, a0, a1, acode0, acode1)
-                    px = row * 4 + i
-                    py = col * 4 + j
+                    px = bx * 4 + i
+                    py = by * 4 + j
                     if px < width and py < height:
                         color = _get_dxt1_color(i, j, c0, c1, ctable, alpha)
                         idx = (py * width + px) * 4
@@ -202,21 +202,19 @@ def _decompress_dxt5(buf: BytesIO, width: int, height: int) -> bytes:
     return bytes(pixels)
 
 
-def _fill_dxt1_block(pixels, bx, by, c0, c1, ctable, width, default_alpha):
-    rc0 = _unpack_rgb565(c0)
-    rc1 = _unpack_rgb565(c1)
+def _fill_dxt1_block(pixels, bx, by, c0, c1, ctable, width, height, default_alpha):
     for j in range(4):
         for i in range(4):
             px = bx + i
             py = by + j
-            if px < width:
+            if px < width and py < height:
                 color = _get_dxt1_color(i, j, c0, c1, ctable, default_alpha)
                 idx = (py * width + px) * 4
                 pixels[idx : idx + 4] = color
 
 
 def _get_dxt1_color(i, j, c0, c1, ctable, alpha) -> bytes:
-    code = (ctable >> (2 * (4 * i + j))) & 0x03
+    code = (ctable >> (2 * (4 * j + i))) & 0x03
     rc0 = _unpack_rgb565(c0)
     rc1 = _unpack_rgb565(c1)
     r0, g0, b0 = rc0[0], rc0[1], rc0[2]
@@ -236,7 +234,7 @@ def _get_dxt1_color(i, j, c0, c1, ctable, alpha) -> bytes:
 
 
 def _get_alpha(i, j, a0, a1, acode0, acode1) -> int:
-    alpha_index = 3 * (4 * j + i)
+    alpha_index = 3 * (4 * i + j)
     if alpha_index <= 12:
         alpha_code = (acode1 >> alpha_index) & 0x07
     elif alpha_index == 15:
@@ -250,17 +248,18 @@ def _get_alpha(i, j, a0, a1, acode0, acode1) -> int:
         return a1
     if a0 > a1:
         return ((8 - alpha_code) * a0 + (alpha_code - 1) * a1) // 7
+    # a0 <= a1: 4-value interpolation + two special codes
+    if alpha_code == 2:
+        return (4 * a0 + 1 * a1) // 5
+    if alpha_code == 3:
+        return (3 * a0 + 2 * a1) // 5
+    if alpha_code == 4:
+        return (2 * a0 + 3 * a1) // 5
+    if alpha_code == 5:
+        return (1 * a0 + 4 * a1) // 5
     if alpha_code == 6:
         return 0
-    if alpha_code == 7:
-        return 255
-    alphas = [0, a0, a1,
-              (4 * a0 + 1 * a1) // 5,
-              (3 * a0 + 2 * a1) // 5,
-              (2 * a0 + 3 * a1) // 5,
-              (1 * a0 + 4 * a1) // 5,
-              0]
-    return alphas[alpha_code] if alpha_code < len(alphas) else 0
+    return 255  # alpha_code == 7
 
 
 def _count_mips(width: int, height: int) -> int:
