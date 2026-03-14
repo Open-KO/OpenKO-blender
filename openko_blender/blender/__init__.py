@@ -1,0 +1,1 @@
+# Blender integration layer — requires bpy (only importable inside Blender).

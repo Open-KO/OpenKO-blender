@@ -1,0 +1,1 @@
+# UI layer — panels and preferences (placeholder for future additions).
