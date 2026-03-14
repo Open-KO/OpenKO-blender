@@ -210,6 +210,20 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
             context, arm_data, chr_data.joint, chr_data.anim_control
         )
 
+        # Expand the scene frame range to fit the longest imported action.
+        # We only ever grow the range so multiple imports accumulate correctly.
+        # Skip zero-length stub slots (frm_end == frm_start) that have no data.
+        real_anims = [
+            a for a in chr_data.anim_control.animations
+            if a.frm_end > a.frm_start
+        ]
+        if not real_anims:
+            return {'FINISHED'}
+        max_frames = max(int(a.frm_end - a.frm_start) + 1 for a in real_anims)
+        context.scene.frame_start = 1
+        if max_frames > context.scene.frame_end:
+            context.scene.frame_end = max_frames
+
     return {'FINISHED'}
 
 

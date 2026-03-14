@@ -88,3 +88,20 @@ def test_anim_control_loaded(n3chr_file):
     char = n3chr.load(n3chr_file)
     assert char.anim_control is not None, "Character should have animation data"
     assert len(char.anim_control.animations) > 0
+
+
+def test_anim_frame_ranges_are_valid(n3chr_file):
+    """Animation frame ranges must be non-negative, and at least one must be non-zero.
+
+    Zero-length stubs (frm_start == frm_end) are allowed — the engine uses them as
+    placeholder slots.  But frm_end must never be less than frm_start, and at least
+    one real clip must exist so the import operator can set a meaningful frame_end.
+    """
+    char = n3chr.load(n3chr_file)
+    for anim in char.anim_control.animations:
+        assert anim.frm_end >= anim.frm_start, (
+            f"Animation {anim.name!r}: frm_end ({anim.frm_end}) "
+            f"must not be less than frm_start ({anim.frm_start})"
+        )
+    real_anims = [a for a in char.anim_control.animations if a.frm_end > a.frm_start]
+    assert real_anims, "Expected at least one animation with a non-zero frame range"
