@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build extension ZIP
+        run: python build_zip.py
+
+      - name: Read version from manifest
+        id: version
+        run: |
+          VERSION=$(python -c "
+          import re
+          with open('openko_blender/blender_manifest.toml') as f:
+              for line in f:
+                  m = re.match(r'^version\s*=\s*\"(.+?)\"', line)
+                  if m:
+                      print(m.group(1))
+                      break
+          ")
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.value }}
+          name: v${{ steps.version.outputs.value }}
+          files: openko_blender.zip
+          fail_on_unmatched_files: true
