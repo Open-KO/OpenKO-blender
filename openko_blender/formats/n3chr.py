@@ -12,17 +12,17 @@ Binary layout:
   AnimKey     key_pos             (CN3Transform — 3 anim keys)
   AnimKey     key_rot
   AnimKey     key_scale
-  int32       coll_vc             (CN3TransformCollision — collision vertex count)
-  int32       coll_fc             (CN3TransformCollision — collision face count)
+  string      coll_mesh_filename  (CN3TransformCollision — collision mesh; usually empty)
+  string      climb_mesh_filename (CN3TransformCollision — climb mesh; usually empty)
   string      joint_filename      (CN3Chr — references .n3joint)
   int32       part_count
   string × part_count             (references .n3cpart files)
   int32       plug_count
   string × plug_count             (references .n3cplug files)
   string      anim_filename       (references .n3anim; may be empty)
-  int32 × MAX_CHR_ANI_PART        (joint_part_starts — must all be 0)
-  int32 × MAX_CHR_ANI_PART        (joint_part_ends   — must all be 0)
-  string      extra_filename      (must be empty)
+  int32 × MAX_CHR_ANI_PART        (joint_part_starts)
+  int32 × MAX_CHR_ANI_PART        (joint_part_ends)
+  string      fx_plug_filename    (added 2002-10-10; absent in older files)
 """
 
 from __future__ import annotations
@@ -70,12 +70,10 @@ def load(path: Path | str) -> N3Chr:
     _key_scale = read_anim_key(r)
 
     # ── CN3TransformCollision ──────────────────────────────────────────────
-    coll_vc = r.read_int32()
-    coll_fc = r.read_int32()
-    if coll_vc > 0 or coll_fc > 0:
-        raise ValueError(
-            f"Collision mesh in .n3chr ({coll_vc} verts, {coll_fc} faces) is not yet supported."
-        )
+    # CN3TransformCollision::Load() reads two length-prefixed mesh filenames
+    # (collision mesh + climb mesh). Both are almost always empty strings.
+    _coll_mesh = r.read_string()
+    _climb_mesh = r.read_string()
 
     # ── CN3Chr ────────────────────────────────────────────────────────────
     joint_filename = r.read_string()
@@ -118,9 +116,9 @@ def load(path: Path | str) -> N3Chr:
     for _ in range(MAX_CHR_ANI_PART):
         r.read_int32()
 
-    extra = r.read_string()
-    if extra:
-        raise ValueError(f"Unexpected extra filename in .n3chr: {extra!r}")
+    # FX plug filename — added 2002-10-10; absent in older files.
+    if r.remaining >= 4:
+        r.read_string()
 
     return N3Chr(
         name=name,
