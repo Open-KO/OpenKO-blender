@@ -123,13 +123,13 @@ class BinaryReader:
     def read_uv(self) -> tuple[float, float]:
         """Read a UV coordinate pair.
 
-        In the KO binary format UV coordinates are stored as (v, u) — note the
-        reversed order.  The V component is also flipped (1 - v) to convert from
-        DirectX UV space to Blender UV space.
+        KO binary format stores UVs as (tu, tv) — standard order per the C++
+        __VertexT1 struct and CN3IMesh::UVSet().  The V component is flipped
+        (1 - v) to convert from DirectX UV space (v=0 top) to Blender (v=0 bottom).
 
         Returns: (u, v) in Blender convention.
         """
-        v_raw, u = struct.unpack_from("<2f", self._data, self._pos)
+        u, v_raw = struct.unpack_from("<2f", self._data, self._pos)
         self._pos += 8
         return (u, 1.0 - v_raw)
 
@@ -145,9 +145,10 @@ class BinaryReader:
     def read_vertex_with_uv(
         self,
     ) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float]]:
-        """Read a VertexWithUV (32 bytes): position + normal + (v_raw, u).
+        """Read a VertexWithUV (32 bytes): position + normal + (tu, tv).
 
-        UV is stored as (v, u) in file; returns (u, 1-v) in Blender convention.
+        UV is stored as (tu, tv) per C++ __VertexT1 struct.
+        Returns (u, 1-v) in Blender convention.
 
         Returns: (pos, normal, uv) where pos and normal are (x,y,z) and uv is (u,v).
         """
@@ -155,6 +156,6 @@ class BinaryReader:
         self._pos += 32
         pos = vals[0:3]
         normal = vals[3:6]
-        v_raw = vals[6]
-        u = vals[7]
+        u = vals[6]
+        v_raw = vals[7]
         return (pos, normal, (u, 1.0 - v_raw))
