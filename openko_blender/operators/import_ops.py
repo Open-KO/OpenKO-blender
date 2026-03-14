@@ -199,6 +199,10 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
             mat = material_builder.create_material(obj_name, image)
             material_builder.apply_material(obj, mat)
 
+        # Attach plug to the skeleton bone it belongs to.
+        if arm_data is not None and 0 <= plug.joint_index < len(arm_data.all_joints_by_idx):
+            _attach_plug_to_bone(obj, arm_data, plug)
+
     # ── Animations ────────────────────────────────────────────────────────────
     if (
         not skip_animations
@@ -369,6 +373,53 @@ def _import_n3pmesh(context, filepath, lod, scale, skip_textures, skip_animation
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
+
+def _attach_plug_to_bone(obj, arm_data, plug):
+    """Bone-parent *obj* to the skeleton bone specified by *plug*.joint_index.
+
+    Replicates CN3CPlugBase::ReCalcMatrix() to build the plug's local transform,
+    converts it to Blender space, then sets up bone parenting so the plug follows
+    the bone during animation.
+
+    The math:
+      C++ rendering order (row-major): final = plug_local * joint_world * char_world
+      Blender bone parenting:          world = rig @ pose_bone @ tail @ parent_inv @ basis
+
+      By setting parent_inv = tail.inv @ correction  and  basis = plug_local_bl,
+      the plug tracks the animated bone correctly.
+    """
+    import mathutils
+    from ..blender.coords import dx_to_blender
+
+    bone_name = arm_data.all_joints_by_idx[plug.joint_index]
+    rig = arm_data.rig
+    bone = rig.data.bones.get(bone_name)
+    if bone is None:
+        return
+
+    # ── Build plug local matrix (CN3CPlugBase::ReCalcMatrix) ─────────────
+    # C++ (row-major):  M = Scale * MtxRot,  pos = position * scale
+    # Blender (col-major): M = MtxRot^T @ Scale,  same pos in column 3
+    rot_bl = mathutils.Matrix(plug.rot_matrix).transposed()
+    scale_mtx = mathutils.Matrix.Diagonal((plug.scale.x, plug.scale.y, plug.scale.z, 1.0))
+    plug_local = rot_bl @ scale_mtx
+    plug_local[0][3] = plug.position.x * plug.scale.x
+    plug_local[1][3] = plug.position.y * plug.scale.y
+    plug_local[2][3] = plug.position.z * plug.scale.z
+
+    # Convert from DX coordinate space to Blender coordinate space
+    plug_local_bl = dx_to_blender(plug_local)
+
+    # ── Bone-parent the object ───────────────────────────────────────────
+    correction = arm_data.bone_corrections[bone_name]
+    tail_offset = mathutils.Matrix.Translation((0, bone.length, 0))
+
+    obj.parent = rig
+    obj.parent_type = 'BONE'
+    obj.parent_bone = bone_name
+    obj.matrix_parent_inverse = tail_offset.inverted() @ correction
+    obj.matrix_basis = plug_local_bl
 
 
 def _pick_lod(skins, lod: int):

@@ -76,9 +76,8 @@ def load(path: Path | str) -> N3CPlug:
     if r.remaining >= 4:
         trace_step = r.read_int32()
         if trace_step > 0:
-            # Trace step data not yet supported; skip gracefully
-            # Each trace entry is a Vector3 (12 bytes)
-            r.skip(trace_step * 12)
+            # trace_color (uint32) + trace0 (float) + trace1 (float) = 12 bytes
+            r.skip(12)
 
     if r.remaining >= 4:
         use_vmesh = r.read_int32()
