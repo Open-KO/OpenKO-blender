@@ -81,3 +81,31 @@ def test_lod_levels_are_decreasing_or_none(n3cpart_file):
     for lod in part.skins[1:]:
         if lod is not None:
             assert lod.vertex_count <= lod0.vertex_count
+
+
+def test_lod0_uv_values_in_range(n3cpart_file):
+    """All UV coordinates must be in [0, 1] after DX→Blender conversion."""
+    part = n3cpart.load(n3cpart_file)
+    skin = part.skins[0]
+    for i, uv in enumerate(skin.uvs):
+        assert 0.0 <= uv.u <= 1.0, f"UV[{i}].u = {uv.u} out of range"
+        assert 0.0 <= uv.v <= 1.0, f"UV[{i}].v = {uv.v} out of range"
+
+
+def test_lod0_uv_indices_in_bounds(n3cpart_file):
+    """Every UV index must refer to a valid entry in the UV list."""
+    part = n3cpart.load(n3cpart_file)
+    skin = part.skins[0]
+    for i, idx in enumerate(skin.uv_indices):
+        assert 0 <= idx < skin.uv_count, (
+            f"uv_indices[{i}] = {idx} is out of bounds (uv_count={skin.uv_count})"
+        )
+
+
+def test_lod0_uv_not_all_zero(n3cpart_file):
+    """UV coordinates must not all be zero — would indicate a read-order bug."""
+    part = n3cpart.load(n3cpart_file)
+    skin = part.skins[0]
+    assert any(uv.u != 0.0 or uv.v != 0.0 for uv in skin.uvs), (
+        "All UV coordinates are zero — likely a U/V read-order bug"
+    )

@@ -161,21 +161,33 @@ def test_read_matrix44_identity():
     assert r.pos == 64
 
 
-def test_read_uv_v_flip():
-    # Stored as (v_raw, u) — v should be flipped
-    v_raw, u = 0.25, 0.75
-    data = struct.pack("<2f", v_raw, u)
+def test_read_uv_u_is_first_float():
+    # File stores (tu, tv) per C++ __VertexT1 / CN3IMesh::UVSet.
+    # U is the first float, V is second (and gets flipped).
+    u_raw, v_raw = 0.75, 0.25
+    data = struct.pack("<2f", u_raw, v_raw)
     r = BinaryReader(data)
     result_u, result_v = r.read_uv()
-    assert result_u == pytest.approx(0.75)
-    assert result_v == pytest.approx(0.75)  # 1 - 0.25
+    assert result_u == pytest.approx(0.75)        # u unchanged
+    assert result_v == pytest.approx(0.75)        # 1 - 0.25
 
 
 def test_read_uv_v_flip_zero():
-    data = struct.pack("<2f", 0.0, 0.5)
+    # V=0.0 in DX (top of texture) → V=1.0 in Blender (top of texture)
+    data = struct.pack("<2f", 0.5, 0.0)           # u=0.5, v_raw=0.0
     r = BinaryReader(data)
     u, v = r.read_uv()
-    assert v == pytest.approx(1.0)  # 1 - 0.0
+    assert u == pytest.approx(0.5)
+    assert v == pytest.approx(1.0)                # 1 - 0.0
+
+
+def test_read_uv_v_flip_one():
+    # V=1.0 in DX (bottom) → V=0.0 in Blender (bottom)
+    data = struct.pack("<2f", 0.0, 1.0)           # u=0.0, v_raw=1.0
+    r = BinaryReader(data)
+    u, v = r.read_uv()
+    assert u == pytest.approx(0.0)
+    assert v == pytest.approx(0.0)                # 1 - 1.0
 
 
 def test_read_vertex():
@@ -188,14 +200,14 @@ def test_read_vertex():
 
 
 def test_read_vertex_with_uv():
-    # pos(3f) + normal(3f) + v_raw(f) + u(f)
-    data = struct.pack("<8f", 1.0, 2.0, 3.0, 0.0, 0.0, 1.0, 0.3, 0.6)
+    # pos(3f) + normal(3f) + tu(f) + tv(f)  per C++ __VertexT1
+    data = struct.pack("<8f", 1.0, 2.0, 3.0, 0.0, 0.0, 1.0, 0.6, 0.3)
     r = BinaryReader(data)
     pos, normal, uv = r.read_vertex_with_uv()
     assert pos == pytest.approx((1.0, 2.0, 3.0))
     assert normal == pytest.approx((0.0, 0.0, 1.0))
-    assert uv[0] == pytest.approx(0.6)   # u
-    assert uv[1] == pytest.approx(0.7)   # 1 - 0.3
+    assert uv[0] == pytest.approx(0.6)   # u  (first float, tu)
+    assert uv[1] == pytest.approx(0.7)   # 1 - 0.3  (1 - tv)
     assert r.pos == 32
 
 
