@@ -10,6 +10,7 @@ Import options (shown in the file-browser sidebar):
   scale          — global scale factor applied to every imported object
   skip_textures  — skip DXT texture loading (geometry only)
   skip_animations— skip animation baking for .n3chr files
+  add_lighting   — add a three-point sun rig for previewing (skipped if lights exist)
 """
 
 from __future__ import annotations
@@ -66,6 +67,11 @@ class IMPORT_OT_ko_asset(Operator, ImportHelper):
         description="Import skeleton and mesh only, without baking animation keyframes",
         default=False,
     )
+    add_lighting: BoolProperty(
+        name="Add Lighting",
+        description="Add ambient lighting to the scene for better asset preview",
+        default=True,
+    )
 
     def execute(self, context):
         filepath = Path(self.filepath)
@@ -96,10 +102,15 @@ class IMPORT_OT_ko_asset(Operator, ImportHelper):
             return {'CANCELLED'}
 
         try:
-            return fn(**kwargs)
+            result = fn(**kwargs)
         except Exception as exc:
             self.report({'ERROR'}, str(exc))
             return {'CANCELLED'}
+
+        if result == {'FINISHED'} and self.add_lighting:
+            _setup_ambient_lighting(context)
+
+        return result
 
     def draw(self, context):
         layout = self.layout
@@ -107,6 +118,8 @@ class IMPORT_OT_ko_asset(Operator, ImportHelper):
         layout.prop(self, "scale")
         layout.prop(self, "skip_textures")
         layout.prop(self, "skip_animations")
+        layout.separator()
+        layout.prop(self, "add_lighting")
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +187,7 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
             if image is None and part.tex_filename:
                 # Texture not found — report a warning but continue
                 pass
-            mat = material_builder.create_material(obj_name, image)
+            mat = material_builder.create_material(obj_name, image, part.material)
             material_builder.apply_material(obj, mat)
 
     # ── Plugs (static weapon / equipment meshes) ──────────────────────────────
@@ -196,7 +209,7 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
             image = material_builder.resolve_and_load_texture(
                 plug.tex_filename, filepath, obj_name
             )
-            mat = material_builder.create_material(obj_name, image)
+            mat = material_builder.create_material(obj_name, image, plug.material)
             material_builder.apply_material(obj, mat)
 
         # Attach plug to the skeleton bone it belongs to.
@@ -257,7 +270,7 @@ def _import_n3shape(context, filepath, lod, scale, skip_textures, skip_animation
             image = material_builder.resolve_and_load_texture(
                 part.tex_filenames[0], filepath, obj_name
             )
-            mat = material_builder.create_material(obj_name, image)
+            mat = material_builder.create_material(obj_name, image, part.material)
             material_builder.apply_material(obj, mat)
 
     return {'FINISHED'}
@@ -284,7 +297,7 @@ def _import_n3cpart(context, filepath, lod, scale, skip_textures, skip_animation
         image = material_builder.resolve_and_load_texture(
             part.tex_filename, filepath, name
         )
-        mat = material_builder.create_material(name, image)
+        mat = material_builder.create_material(name, image, part.material)
         material_builder.apply_material(obj, mat)
 
     return {'FINISHED'}
@@ -310,7 +323,7 @@ def _import_n3cplug(context, filepath, lod, scale, skip_textures, skip_animation
         image = material_builder.resolve_and_load_texture(
             plug.tex_filename, filepath, name
         )
-        mat = material_builder.create_material(name, image)
+        mat = material_builder.create_material(name, image, plug.material)
         material_builder.apply_material(obj, mat)
 
     return {'FINISHED'}
@@ -420,6 +433,47 @@ def _attach_plug_to_bone(obj, arm_data, plug):
     obj.parent_bone = bone_name
     obj.matrix_parent_inverse = tail_offset.inverted() @ correction
     obj.matrix_basis = plug_local_bl
+
+
+def _setup_ambient_lighting(context):
+    """Add scene lighting matching the KnightOnline engine defaults.
+
+    Reproduces the default scene from CN3Scene::DefaultLightAdd():
+      - One directional light, direction (-1, -1, 0.5), colour (0.7, 0.7, 0.7)
+      - Ambient = 70% of light colour (handled via scene world)
+
+    The DX direction is converted to Blender space via MAP_MTX.
+    Only adds lights if no lights exist in the scene yet.
+    """
+    import bpy
+    import mathutils
+
+    if any(obj.type == 'LIGHT' for obj in context.scene.objects):
+        return
+
+    # KO default light: direction (-1, -1, 0.5) in DX space, colour 70% white
+    # Convert DX direction to Blender via MAP_MTX 3×3:
+    #   bl = [[-1,0,0],[0,0,-1],[0,1,0]] @ [-1,-1,0.5] = [1, -0.5, -1]
+    bl_dir = mathutils.Vector((1.0, -0.5, -1.0)).normalized()
+    rotation = bl_dir.to_track_quat('-Z', 'Y').to_euler()
+
+    light_data = bpy.data.lights.new("KO_DefaultLight", 'SUN')
+    light_data.energy = 2.0
+    light_data.color = (0.7, 0.7, 0.7)
+    light_obj = bpy.data.objects.new("KO_DefaultLight", light_data)
+    light_obj.rotation_euler = rotation
+    context.scene.collection.objects.link(light_obj)
+
+    # Set world ambient to match KO's ambient (70% of light colour ≈ 0.49)
+    world = context.scene.world
+    if world is None:
+        world = bpy.data.worlds.new("KO_World")
+        context.scene.world = world
+    world.use_nodes = True
+    bg = world.node_tree.nodes.get("Background")
+    if bg is not None:
+        bg.inputs["Color"].default_value = (0.49, 0.49, 0.49, 1.0)
+        bg.inputs["Strength"].default_value = 0.3
 
 
 def _pick_lod(skins, lod: int):

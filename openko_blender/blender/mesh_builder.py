@@ -37,8 +37,10 @@ def build_static_mesh(pmesh: N3PMesh, name: str) -> bpy.types.Object:
     mesh = bpy.data.meshes.new(f"{name}-mesh")
 
     verts = [[v.pos.x, v.pos.y, v.pos.z] for v in pmesh.vertices]
+    # Reverse winding (swap indices 1 & 2) to compensate for MAP_MTX's negative
+    # determinant, which flips face orientation during the DX→Blender transform.
     faces = [
-        [pmesh.indices[i], pmesh.indices[i + 1], pmesh.indices[i + 2]]
+        [pmesh.indices[i], pmesh.indices[i + 2], pmesh.indices[i + 1]]
         for i in range(0, len(pmesh.indices), 3)
     ]
 
@@ -67,8 +69,9 @@ def build_skinned_mesh(skin: Skin, name: str) -> bpy.types.Object:
     mesh = bpy.data.meshes.new(f"{name}-mesh")
 
     verts = [[sv.origin.x, sv.origin.y, sv.origin.z] for sv in skin.skin_vertices]
+    # Reverse winding (swap indices 1 & 2) — same MAP_MTX compensation as static meshes.
     faces = [
-        [skin.face_indices[i], skin.face_indices[i + 1], skin.face_indices[i + 2]]
+        [skin.face_indices[i], skin.face_indices[i + 2], skin.face_indices[i + 1]]
         for i in range(0, 3 * skin.face_count, 3)
     ]
 
@@ -76,7 +79,14 @@ def build_skinned_mesh(skin: Skin, name: str) -> bpy.types.Object:
     mesh.transform(MAP_MTX)
     mesh.update(calc_edges=True)
 
-    _apply_skin_uvs(mesh, skin)
+    # Build UV indices with the same winding swap (corners 1 & 2 exchanged per tri)
+    swapped_uv_indices = []
+    for i in range(0, 3 * skin.face_count, 3):
+        swapped_uv_indices.append(skin.uv_indices[i])
+        swapped_uv_indices.append(skin.uv_indices[i + 2])
+        swapped_uv_indices.append(skin.uv_indices[i + 1])
+
+    _apply_skin_uvs(mesh, skin, swapped_uv_indices)
 
     obj = bpy.data.objects.new(name, mesh)
     return obj
@@ -123,22 +133,26 @@ def add_armature_modifier(obj: bpy.types.Object, rig: bpy.types.Object) -> None:
 
 
 def _apply_pmesh_uvs(mesh: bpy.types.Mesh, pmesh: N3PMesh) -> None:
-    """Assign per-loop UVs from N3PMesh (one UV per vertex, indexed by face loop)."""
+    """Assign per-loop UVs from N3PMesh (one UV per vertex, indexed by face loop).
+
+    Uses mesh.loops[].vertex_index rather than the original pmesh.indices so
+    UVs stay correct after the winding-order swap in build_static_mesh().
+    """
     uvlayer = mesh.uv_layers.new(name="UVMap")
     for face in mesh.polygons:
         for loop_idx in range(face.loop_start, face.loop_start + face.loop_total):
-            vert_idx = pmesh.indices[loop_idx]
+            vert_idx = mesh.loops[loop_idx].vertex_index
             uv = pmesh.vertices[vert_idx].uv
             uvlayer.data[loop_idx].uv = (uv.u, uv.v)
 
 
-def _apply_skin_uvs(mesh: bpy.types.Mesh, skin: Skin) -> None:
-    """Assign per-loop UVs from a Skin (separate UV array + per-corner index list)."""
+def _apply_skin_uvs(mesh: bpy.types.Mesh, skin: Skin, uv_indices: list[int]) -> None:
+    """Assign per-loop UVs from a Skin using the (possibly winding-swapped) *uv_indices*."""
     if skin.uv_count <= 0:
         return
     uvlayer = mesh.uv_layers.new(name="UVMap")
     for face in mesh.polygons:
         for loop_idx in range(face.loop_start, face.loop_start + face.loop_total):
-            uv_idx = skin.uv_indices[loop_idx]
+            uv_idx = uv_indices[loop_idx]
             uv = skin.uvs[uv_idx]
             uvlayer.data[loop_idx].uv = (uv.u, uv.v)

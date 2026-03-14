@@ -8,13 +8,19 @@ The raw RGBA bytes from decompress_to_rgba() are in top-to-bottom row order.
 Blender's image.pixels expects bottom-to-top, so rows are reversed before
 assigning to image.pixels.
 
-Material setup: Principled BSDF ← BaseColor ← TexImage ← .dxt file.
+Material setup reproduces the KnightOnline D3D9 fixed-function pipeline:
+  - Principled BSDF with diffuse, specular, emissive from KO __Material
+  - Texture blending: D3DTOP_MODULATE → texture × diffuse color
+  - Render flags: double-sided, alpha blending, no-light (emission-only)
+  - Specular power: D3D power → Blender roughness via sqrt(2 / (power + 2))
+
 When a texture cannot be found or decompressed, a material is still created
 (without a texture node) so the object is usable.
 """
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +28,7 @@ import bpy
 
 if TYPE_CHECKING:
     from ..formats.dxt_texture import DxtTexture
+    from ..formats.structs import Material as KOMaterial
 
 
 # ---------------------------------------------------------------------------
@@ -32,15 +39,28 @@ if TYPE_CHECKING:
 def create_material(
     name: str,
     image: "bpy.types.Image | None" = None,
+    ko_material: "KOMaterial | None" = None,
 ) -> bpy.types.Material:
-    """Create a Principled BSDF material, optionally wired to *image*.
+    """Create a Principled BSDF material matching KO's D3D9 rendering.
 
-    Node layout:
-      [TexImage (-400,0)] --Color--> [Principled BSDF (0,0)] --BSDF--> [Output (400,0)]
+    When *ko_material* is provided, diffuse/specular/emissive colours and render
+    flags are applied.  The KO engine uses D3DTOP_MODULATE (texture × diffuse) as
+    the default texture blend mode — when diffuse is not pure white, a Multiply
+    node is inserted between the texture and the shader.
+
+    Node layout (with texture + non-white diffuse):
+      [TexImage] --Color--> [Multiply] --Color--> [Principled BSDF] --> [Output]
+                  diffuse ->     ↑
+
+    Node layout (texture only, white diffuse):
+      [TexImage] --Color--> [Principled BSDF] --> [Output]
     """
+    from ..formats.structs import RenderFlag
+
     mat = bpy.data.materials.new(name=name)
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
     nodes.clear()
 
     shader = nodes.new(type="ShaderNodeBsdfPrincipled")
@@ -48,13 +68,83 @@ def create_material(
 
     mat_out = nodes.new(type="ShaderNodeOutputMaterial")
     mat_out.location = (400, 0)
-    mat.node_tree.links.new(shader.outputs["BSDF"], mat_out.inputs["Surface"])
+    links.new(shader.outputs["BSDF"], mat_out.inputs["Surface"])
 
+    # ── Apply KO material properties ─────────────────────────────────────
+    diffuse_rgb = (1.0, 1.0, 1.0)
+    if ko_material is not None:
+        d = ko_material.diffuse
+        diffuse_rgb = (d.r, d.g, d.b)
+
+        # Specular: convert D3D power to Blender roughness
+        # D3D: higher power = sharper highlight; Blender: lower roughness = sharper
+        power = max(ko_material.power, 0.0)
+        roughness = math.sqrt(2.0 / (power + 2.0))
+        shader.inputs["Roughness"].default_value = roughness
+
+        # Specular intensity (average of specular RGB)
+        s = ko_material.specular
+        spec_intensity = (s.r + s.g + s.b) / 3.0
+        shader.inputs["Specular IOR Level"].default_value = spec_intensity
+
+        # Emissive
+        e = ko_material.emissive
+        if e.r > 0.0 or e.g > 0.0 or e.b > 0.0:
+            shader.inputs["Emission Color"].default_value = (e.r, e.g, e.b, 1.0)
+            shader.inputs["Emission Strength"].default_value = 1.0
+
+        # RF_NOTUSELIGHT: object is fully self-lit (treat as emission-only)
+        flags = ko_material.render_flags
+        if flags & RenderFlag.NO_LIGHT:
+            shader.inputs["Emission Strength"].default_value = 1.0
+            # Set emission to diffuse if no explicit emissive was set
+            if e.r == 0.0 and e.g == 0.0 and e.b == 0.0:
+                shader.inputs["Emission Color"].default_value = (*diffuse_rgb, 1.0)
+
+        # RF_DOUBLESIDED: disable backface culling
+        if flags & RenderFlag.DOUBLE_SIDED:
+            mat.use_backface_culling = False
+        else:
+            mat.use_backface_culling = True
+
+        # RF_ALPHABLENDING / RF_DIFFUSEALPHA: enable transparency.
+        # Blender 4.2+ EEVEE Next removed blend_method; transparency is
+        # automatic when the Principled BSDF Alpha input is connected.
+        # For older Blender versions, set blend_method if available.
+        if flags & (RenderFlag.ALPHA_BLENDING | RenderFlag.DIFFUSE_ALPHA):
+            if hasattr(mat, 'blend_method'):
+                mat.blend_method = 'BLEND' if flags & RenderFlag.ALPHA_BLENDING else 'CLIP'
+                mat.shadow_method = 'CLIP'
+
+    # Set base diffuse colour (used as fallback when no texture)
+    shader.inputs["Base Color"].default_value = (*diffuse_rgb, 1.0)
+
+    # ── Texture node ─────────────────────────────────────────────────────
     if image is not None:
         tex_node = nodes.new("ShaderNodeTexImage")
         tex_node.image = image
         tex_node.location = (-400, 0)
-        mat.node_tree.links.new(tex_node.outputs["Color"], shader.inputs["Base Color"])
+
+        # KO default: D3DTOP_MODULATE = texture × diffuse
+        # If diffuse is white, the multiply is a no-op — wire directly
+        is_white = all(c > 0.99 for c in diffuse_rgb)
+        if is_white:
+            links.new(tex_node.outputs["Color"], shader.inputs["Base Color"])
+        else:
+            mix = nodes.new("ShaderNodeMix")
+            mix.data_type = 'RGBA'
+            mix.blend_type = 'MULTIPLY'
+            mix.location = (-150, 0)
+            mix.inputs["Factor"].default_value = 1.0
+            mix.inputs[6].default_value = (*diffuse_rgb, 1.0)  # B input (color)
+            links.new(tex_node.outputs["Color"], mix.inputs[7])  # A input (color)
+            links.new(mix.outputs[2], shader.inputs["Base Color"])  # Result (color)
+
+        # Wire texture alpha for transparency
+        if ko_material is not None:
+            flags = ko_material.render_flags
+            if flags & (RenderFlag.ALPHA_BLENDING | RenderFlag.DIFFUSE_ALPHA):
+                links.new(tex_node.outputs["Alpha"], shader.inputs["Alpha"])
 
     return mat
 
