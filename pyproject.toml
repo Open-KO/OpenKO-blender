@@ -1,0 +1,13 @@
+[project]
+name = "openko-blender"
+version = "1.0.0"
+description = "KnightOnline Blender Plugin"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["openko_blender*"]
