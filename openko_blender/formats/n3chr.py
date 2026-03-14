@@ -30,13 +30,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from openko_blender.formats._base import read_anim_key, read_name, resolve_asset_path
-from openko_blender.formats.structs import Quaternion, Vector3
-from openko_blender.formats import n3anim as _n3anim
-from openko_blender.formats import n3cpart as _n3cpart
-from openko_blender.formats import n3cplug as _n3cplug
-from openko_blender.formats import n3joint as _n3joint
-from openko_blender.utils.binary_reader import BinaryReader
+from ._base import read_anim_key, read_name, resolve_asset_path
+from .structs import Quaternion, Vector3
+from . import n3anim as _n3anim
+from . import n3cpart as _n3cpart
+from . import n3cplug as _n3cplug
+from . import n3joint as _n3joint
+from ..utils.binary_reader import BinaryReader
 
 MAX_CHR_ANI_PART = 2
 

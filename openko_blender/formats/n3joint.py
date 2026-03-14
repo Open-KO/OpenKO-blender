@@ -24,9 +24,9 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from openko_blender.formats._base import read_anim_key, read_name
-from openko_blender.formats.structs import AnimKey, Quaternion, Vector3
-from openko_blender.utils.binary_reader import BinaryReader
+from ._base import read_anim_key, read_name
+from .structs import AnimKey, Quaternion, Vector3
+from ..utils.binary_reader import BinaryReader
 
 # Identity quaternion (no rotation)
 _IDENTITY_QUAT = Quaternion(0.0, 0.0, 0.0, 1.0)

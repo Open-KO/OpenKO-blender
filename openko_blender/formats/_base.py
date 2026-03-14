@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openko_blender.formats.structs import (
+from .structs import (
     AnimKey,
     AnimKeyType,
     D3DColor,
@@ -17,7 +17,7 @@ from openko_blender.formats.structs import (
     Quaternion,
     Vector3,
 )
-from openko_blender.utils.binary_reader import BinaryReader
+from ..utils.binary_reader import BinaryReader
 
 
 def read_name(r: BinaryReader) -> str:

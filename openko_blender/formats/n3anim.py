@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from openko_blender.utils.binary_reader import BinaryReader
+from ..utils.binary_reader import BinaryReader
 
 
 @dataclass

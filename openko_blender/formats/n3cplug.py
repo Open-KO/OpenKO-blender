@@ -22,10 +22,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from openko_blender.formats._base import read_material, read_name, resolve_asset_path
-from openko_blender.formats.structs import Material, PlugType, Vector3
-from openko_blender.formats import n3pmesh as _n3pmesh
-from openko_blender.utils.binary_reader import BinaryReader
+from ._base import read_material, read_name, resolve_asset_path
+from .structs import Material, PlugType, Vector3
+from . import n3pmesh as _n3pmesh
+from ..utils.binary_reader import BinaryReader
 
 
 @dataclass

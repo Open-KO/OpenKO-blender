@@ -26,8 +26,8 @@ from enum import IntEnum
 from io import BytesIO
 from pathlib import Path
 
-from openko_blender.formats._base import read_name
-from openko_blender.utils.binary_reader import BinaryReader
+from ._base import read_name
+from ..utils.binary_reader import BinaryReader
 
 
 class DxtFormat(IntEnum):
