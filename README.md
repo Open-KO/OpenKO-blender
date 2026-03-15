@@ -3,7 +3,7 @@
 A Blender 4.2+ extension for importing KnightOnline game assets — meshes, skeletons, animations, textures, and more.
 
 ![Blender](https://img.shields.io/badge/Blender-4.2%2B-orange)
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-GPL--2.0--or--later-blue)
 
 ---
 
@@ -174,4 +174,4 @@ Contributions are welcome. Please open an issue before starting work on a large 
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+GPL-2.0-or-later — see [LICENSE](LICENSE) for details.
