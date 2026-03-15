@@ -40,6 +40,11 @@ def _sync_frame_range_to_action(scene, depsgraph) -> None:  # noqa: ARG001
         if action is None:
             continue
 
+        # Stop playback before changing the frame range so the new end frame
+        # takes effect immediately rather than being clamped to the old range.
+        if bpy.context.screen.is_animation_playing:
+            bpy.ops.screen.animation_cancel(restore_frame=False)
+
         start, end = action.frame_range
         scene.frame_start = int(start)
         scene.frame_end = int(end)
