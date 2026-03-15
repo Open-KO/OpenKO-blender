@@ -11,8 +11,8 @@ Binary layout (all little-endian):
   int32           min_num_indices
   VertexWithUV × max_num_vertices
   uint16       × max_num_indices
-  [EdgeCollapse data — skipped when num_collapses > 0]
-  [Index change data — skipped when total_index_changes > 0]
+  __EdgeCollapse × num_collapses        (read and discarded — 24 bytes each)
+  int32          × total_index_changes  (read and discarded)
   int32           lod_ctrl_value_count
   LODCtrlValue × lod_ctrl_value_count
 

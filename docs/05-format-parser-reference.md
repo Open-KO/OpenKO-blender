@@ -1,6 +1,6 @@
-# Prototype Analysis — ko-assets-blender
+# Format Parser Reference
 
-This document summarizes the existing working prototype located at `C:\Users\srmeier\Projects\ko-ripping\ko-assets-blender`. The prototype is the primary technical reference for the rewrite.
+This document summarizes the technical reference used during initial development — binary parsing logic, coordinate transforms, and Blender API patterns derived from the KnightOnline C++ source at [Open-KO/KnightOnline](https://github.com/Open-KO/KnightOnline).
 
 ---
 

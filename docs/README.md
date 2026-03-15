@@ -12,13 +12,13 @@ This folder contains the design and reference documentation for the OpenKO Blend
 | [02-file-format-specs.md](02-file-format-specs.md) | Complete binary format specs for all KO file types |
 | [03-blender-addon-best-practices.md](03-blender-addon-best-practices.md) | Blender 4.2+ Extensions development guide |
 | [04-versioning-and-distribution.md](04-versioning-and-distribution.md) | Versioning strategy, release workflow, CI/CD |
-| [05-prototype-analysis.md](05-prototype-analysis.md) | Analysis of the working prototype — what to keep and what to improve |
+| [05-format-parser-reference.md](05-format-parser-reference.md) | Format parser reference — binary parsing logic and Blender API patterns |
 
 ---
 
 ## Quick Links
 
-- Working prototype: `C:\Users\srmeier\Projects\ko-ripping\ko-assets-blender`
-- KnightOnline C++ source: `C:\Users\srmeier\Projects\KnightOnline\src\N3Base\`
+- KnightOnline C++ source: [Open-KO/KnightOnline](https://github.com/Open-KO/KnightOnline)
 - Blender Extensions docs: https://docs.blender.org/manual/en/latest/advanced/extensions/
 - Extensions platform: https://extensions.blender.org
+- Community Discord: https://discord.gg/Uy73SMMjWS

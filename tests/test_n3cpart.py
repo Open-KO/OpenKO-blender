@@ -19,6 +19,12 @@ def test_has_tex_filename(n3cpart_file):
     assert isinstance(part.tex_filename, str)
 
 
+def test_tex_diffuse_filename_is_string(n3cpart_file):
+    """tex_diffuse_filename must always be a str (empty when version != 1)."""
+    part = n3cpart.load(n3cpart_file)
+    assert isinstance(part.tex_diffuse_filename, str)
+
+
 def test_has_skins_filename(n3cpart_file):
     part = n3cpart.load(n3cpart_file)
     assert isinstance(part.skins_filename, str)

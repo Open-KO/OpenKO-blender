@@ -1,25 +1,6 @@
 # KnightOnline File Format Specifications
 
-All formats are **little-endian binary**. All files share a common versioned base header via `CN3BaseFileAccess`.
-
----
-
-## Common Base Header
-
-Every KO asset file begins with a format version (read by `CN3BaseFileAccess::Load`):
-
-```
-uint16_t iFileFormatVersion    // 1098, 1264, or 1298
-```
-
-**Known versions:**
-| Value | Constant | Notes |
-|-------|----------|-------|
-| 1098 | `N3FORMAT_VER_1098` | Oldest supported |
-| 1264 | `N3FORMAT_VER_1264` | Intermediate |
-| 1298 | `N3FORMAT_VER_1298` | Current default |
-
----
+All formats are **little-endian binary**.
 
 ## Shared Primitive Types
 
@@ -119,7 +100,6 @@ float[] pfWeights   //  4 bytes each — blend weight (0.0–1.0)
 **C++ class:** `CN3PMesh`
 
 ```
-uint16  iFileFormatVersion           // base header
 int32   m_iNumCollapses              // edge collapse operations
 int32   m_iTotalIndexChanges         // total remapping entries
 int32   m_iMaxNumVertices            // vertex count at highest LOD
@@ -130,9 +110,8 @@ int32   m_iMinNumIndices             // index count at lowest LOD
 VertexWithUV[m_iMaxNumVertices]      // vertex array
 uint16[m_iMaxNumIndices]             // triangle indices (3 per face)
 
-// LOD collapse data (may be empty / not used by importer)
-__EdgeCollapse[m_iNumCollapses]
-int32[m_iTotalIndexChanges]
+__EdgeCollapse × m_iNumCollapses        // 24 bytes each; read and discarded
+int32          × m_iTotalIndexChanges  // read and discarded
 
 // LOD control thresholds
 int32   m_iLODCtrlValueCount
@@ -151,7 +130,6 @@ __LODCtrlValue[m_iLODCtrlValueCount]
 
 Each joint is loaded recursively:
 ```
-uint16  iFileFormatVersion           // base header (root joint only)
 
 // CN3Transform base:
 Vector3    m_vPos                    // local position
@@ -181,7 +159,6 @@ int32  nChildCount
 **C++ class:** `CN3AnimControl`
 
 ```
-uint16  iFileFormatVersion
 
 int32   nAnimCount
 // for each animation:
@@ -199,12 +176,13 @@ int32   nAnimCount
 
 **C++ class:** `CN3CPart`
 
-A character body part references external `.n3cskins` and `.n3tex` files:
+A character body part references external `.n3cskins` and `.dxt` files:
 ```
-uint16  iFileFormatVersion
-uint32  m_dwReserved                // reserved (ignore)
-Material m_MtlOrg                  // material (88 bytes)
-string  szTexFilename               // texture file (.dxt/.dxt)
+string  name                        // CN3BaseFileAccess
+int32   version                     // 0 = original; 1 = adds a second texture
+Material material                   // 92 bytes
+string  szTexFilename               // texture file (.dxt)
+string  szTexDiffuseFilename        // only present when version == 1
 string  szSkinsFilename             // skins file (.n3cskins)
 ```
 
@@ -231,16 +209,17 @@ The `.n3cskins` file contains up to 4 LOD meshes:
 **C++ class:** `CN3CPlug`
 
 ```
-uint16  iFileFormatVersion
-uint32  m_ePlugType                 // PLUGTYPE_NORMAL=0, PLUGTYPE_CLOAK=1, etc.
-bool    m_bVisible                  // visibility flag
-int32   m_nJointIndex               // which joint to attach to
-Vector3 m_vPosition                 // local offset from joint
-Matrix44 m_MtxRot                  // rotation matrix
-Vector3 m_vScale                    // scale
-Material m_Mtl                     // material
-string  szPMeshFilename             // .n3pmesh file reference
-string  szTexFilename               // texture file reference
+string  name                        // CN3BaseFileAccess
+int32   plug_type                   // e_PlugType: NORMAL=0, CLOAK=1
+int32   joint_index                 // which joint to attach to
+Vector3 position                    // local offset from joint
+Matrix44 rot_matrix                 // 64 bytes
+Vector3 scale
+Material material                   // 92 bytes
+string  mesh_filename               // .n3pmesh or .n3mesh
+string  tex_filename                // .dxt texture
+int32   trace_step                  // trace data follows when > 0
+int32   use_vmesh                   // VirtualMesh data follows when != 0
 ```
 
 ---
@@ -251,34 +230,33 @@ string  szTexFilename               // texture file reference
 
 The top-level character file that ties everything together:
 ```
-uint16  iFileFormatVersion
 
-// CN3TransformCollision base (position, rotation, scale, bounds):
+// CN3BaseFileAccess::Load():
+string      name
+
+// CN3Transform::Load():
 Vector3     m_vPos
 Quaternion  m_qRot
 Vector3     m_vScale
-float       m_fRadius               // bounding sphere
-Vector3     m_vMin, m_vMax          // AABB
+AnimKey     key_pos
+AnimKey     key_rot
+AnimKey     key_scale
 
-// Collision data (if present — raises error in prototype):
-bool        bHasCollision
+// CN3TransformCollision::Load():
+string      szCollisionMeshFilename
+string      szClimbMeshFilename
 
-// Skeleton:
+// CN3Chr::Load():
 string      szJointFilename         // .n3joint file
-// (loaded externally, then cross-referenced)
-
-// Animation:
-string      szAnimFilename          // .n3anim file
-
-// Parts (body segments):
 int32       nPartCount
-for each part:
-  string    szPartFilename          // .n3cpart file
-
-// Plugs (equipment):
+string × nPartCount                 // .n3cpart files
 int32       nPlugCount
-for each plug:
-  string    szPlugFilename          // .n3cplug file
+string × nPlugCount                 // .n3cplug files
+string      szAnimFilename          // .n3anim file
+int32 × MAX_CHR_ANI_PART (2)        // joint_part_starts (upper/lower body split)
+int32 × MAX_CHR_ANI_PART (2)        // joint_part_ends
+string      fx_plug_filename        // added 2002-10-10; absent in older files
+string      coll_skin_filename      // CN3Skin reference; added for v1298
 ```
 
 ---
@@ -303,7 +281,7 @@ bool     bMipMap                    // has mipmap chain
 |-------|------|-------------|
 | 0 | Uncompressed | Raw RGBA |
 | 827611204 | D3DFMT_DXT1 | No alpha, 4 bpp |
-| (DXT3) | D3DFMT_DXT3 | Explicit alpha |
+| 861165636 | D3DFMT_DXT3 | Explicit alpha |
 | 894720068 | D3DFMT_DXT5 | Interpolated alpha |
 
 **DXT block structure (4×4 pixels):**
@@ -341,27 +319,33 @@ bl_mtx = map_mtx @ dx_mtx @ map_mtx.inverted()
 A static scene object composed of one or more mesh parts, each with its own material and texture(s). Also contains game-logic metadata (faction affiliation, event type, NPC binding) that is not relevant to mesh import.
 
 ```
-uint16  iFileFormatVersion
+// CN3BaseFileAccess::Load():
+string  name
 
-// CN3TransformCollision base:
-Vector3     m_vPos                  // world position
-Quaternion  m_qRot                  // world rotation
-Vector3     m_vScale                // world scale
-float       m_fRadius               // bounding sphere radius
-Vector3     m_vMin, m_vMax          // AABB
+// CN3Transform::Load():
+Vector3     m_vPos
+Quaternion  m_qRot
+Vector3     m_vScale
+AnimKey     key_pos                 // typically empty (count = 0)
+AnimKey     key_rot
+AnimKey     key_scale
 
-// Parts:
+// CN3TransformCollision::Load():
+string  szCollisionMeshFilename     // length-prefixed; empty = no collision mesh
+string  szClimbMeshFilename         // length-prefixed; empty = no climb mesh
+
+// CN3Shape::Load():
 int32   nPartCount
 for each part (CN3SPart):
   Vector3  m_vPivot                 // local pivot point (12 bytes)
   string   szMeshFilename           // .n3pmesh file reference
   Material m_Mtl                   // material (88 bytes)
-  float    fTexFPS                  // texture animation FPS
   int32    nTextureCount
+  float    fTexFPS                  // texture animation FPS
   for each texture:
     string szTexFilename            // .dxt texture file reference
 
-// Game-logic metadata (import ignores these):
+// Game-logic metadata (read but not used for import):
 int32   nBelongID                   // faction affiliation
 int32   nEventID
 int32   nEventType                  // bind point, gate, lever, etc.

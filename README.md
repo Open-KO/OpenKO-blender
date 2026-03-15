@@ -106,7 +106,7 @@ Textures in `.ntf` / `.dxt` format are loaded automatically when referenced by a
 Clone the repository and run the build script to produce an installable ZIP:
 
 ```bash
-git clone https://github.com/your-org/OpenKO-blender.git
+git clone https://github.com/Open-KO/OpenKO-blender.git
 cd OpenKO-blender
 python build_zip.py
 ```
@@ -151,7 +151,13 @@ Detailed design notes and binary format specifications live in [docs/](docs/READ
 - [File Format Specifications](docs/02-file-format-specs.md)
 - [Blender Extension Best Practices](docs/03-blender-addon-best-practices.md)
 - [Versioning and Distribution](docs/04-versioning-and-distribution.md)
-- [Prototype Analysis](docs/05-prototype-analysis.md)
+- [Format Parser Reference](docs/05-format-parser-reference.md)
+
+---
+
+## Support
+
+Join the community on [Discord](https://discord.gg/Uy73SMMjWS) for help, feedback, and discussion.
 
 ---
 

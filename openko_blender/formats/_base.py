@@ -61,21 +61,16 @@ def read_transform(r: BinaryReader) -> tuple:
 
 
 def read_transform_collision(r: BinaryReader) -> tuple:
-    """CN3TransformCollision::Load — reads transform then two collision counts.
+    """CN3TransformCollision::Load — reads transform then two collision mesh filenames.
 
-    Collision mesh data is skipped (not relevant to mesh import).
-    Raises ValueError if collision data is present (not yet implemented).
+    The collision mesh and climb mesh filenames are read and discarded;
+    collision geometry is not used for import.
 
     Returns: same as read_transform()
     """
     result = read_transform(r)
-    coll_vc = r.read_int32()
-    coll_fc = r.read_int32()
-    if coll_vc > 0 or coll_fc > 0:
-        raise ValueError(
-            f"Collision mesh data found ({coll_vc} verts, {coll_fc} faces) — "
-            "collision import is not yet supported."
-        )
+    r.read_string()  # szCollisionMeshFilename
+    r.read_string()  # szClimbMeshFilename
     return result
 
 

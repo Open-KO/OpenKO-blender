@@ -45,6 +45,12 @@ def test_pmesh_loaded(n3cplug_file):
     assert plug.pmesh.vertex_count > 0
 
 
+def test_mesh_filename_is_string(n3cplug_file):
+    plug = n3cplug.load(n3cplug_file)
+    assert isinstance(plug.mesh_filename, str)
+    assert plug.mesh_filename != "", "Equipment plug must reference a mesh file"
+
+
 def test_tex_filename_is_string(n3cplug_file):
     plug = n3cplug.load(n3cplug_file)
     assert isinstance(plug.tex_filename, str)
