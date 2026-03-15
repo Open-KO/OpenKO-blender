@@ -43,8 +43,7 @@ def _sync_frame_range_to_action(scene, depsgraph) -> None:  # noqa: ARG001
         start, end = action.frame_range
         scene.frame_start = int(start)
         scene.frame_end = int(end)
-        if not (scene.frame_start <= scene.frame_current <= scene.frame_end):
-            scene.frame_current = scene.frame_start
+        scene.frame_current = scene.frame_start
 
 
 def register() -> None:

@@ -169,10 +169,13 @@ def build_animations(
     if rig.animation_data is None:
         rig.animation_data_create()
 
+    first_action = None
     for i, anim_data in enumerate(anim_control.animations):
         action_name = anim_data.name or f"{rig.name}_{i:03d}"
         action = bpy.data.actions.new(name=action_name)
         rig.animation_data.action = action
+        if first_action is None:
+            first_action = action
 
         frame = 1
         fFrm = anim_data.frm_start
@@ -180,6 +183,9 @@ def build_animations(
             _set_pose_frame(rig, root_joint, frame, fFrm, None, None, arm_data)
             fFrm += 1.0
             frame += 1
+
+    if first_action is not None:
+        rig.animation_data.action = first_action
 
     bpy.ops.object.mode_set(mode='OBJECT')
 
