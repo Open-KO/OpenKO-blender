@@ -21,7 +21,7 @@ jobs:
 
       - name: Download test assets
         run: |
-          curl -L "https://stephenmeiernet.wordpress.com/wp-content/uploads/2026/03/ko_assets-2.zip" -o ko_assets.zip
+          curl -L "https://stephenmeiernet.wordpress.com/wp-content/uploads/2026/03/ko_assets-3.zip" -o ko_assets.zip
           unzip ko_assets.zip -d ko_assets
 
       - name: Run tests
