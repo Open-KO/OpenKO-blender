@@ -1,5 +1,7 @@
 # OpenKO Blender
 
+![Example Image](https://stephenmeiernet.wordpress.com/wp-content/uploads/2026/03/blender-plugin-ex.png)
+
 A Blender 4.2+ extension for importing KnightOnline game assets — meshes, skeletons, animations, textures, and more.
 
 ![Blender](https://img.shields.io/badge/Blender-4.2%2B-orange)
