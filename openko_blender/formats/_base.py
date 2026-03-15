@@ -115,7 +115,8 @@ def resolve_asset_path(base_file: Path, stored_path: str) -> "Path | None":
     """
     if not stored_path:
         return None
-    stored = Path(stored_path)
+    # KO stores paths with Windows backslashes; normalise for cross-platform use
+    stored = Path(stored_path.replace("\\", "/"))
     candidates = [
         base_file.parent / stored.name,
         base_file.parent / stored,
