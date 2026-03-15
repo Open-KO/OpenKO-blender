@@ -1,5 +1,6 @@
 .claude/
 *.zip
+ko_assets/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

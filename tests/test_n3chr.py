@@ -14,14 +14,15 @@ import pytest
 
 from openko_blender.formats import n3chr
 
-_ASSETS = Path(r"C:\Users\srmeier\Projects\KnightOnline\assets\Client")
+import os as _os
+_ASSETS = Path(_os.environ.get("KO_ASSETS", "ko_assets/Client"))
 
 # Four files that span old/new format and low/high complexity.
 _SAMPLES = [
-    _ASSETS / "Intro"  / "intro.n3chr",       # old format — no FX plug
-    _ASSETS / "Chr"    / "mob_goblin.n3chr",   # small mob, newer format
-    _ASSETS / "Chr"    / "el_dong_gold.n3chr", # NPC with parts, plugs, anim
-    _ASSETS / "Chr"    / "npc_dong_gold.n3chr",# large NPC with multiple plugs
+    _ASSETS / "Intro" / "intro.n3chr",        # old format — no FX plug
+    _ASSETS / "Chr"   / "mob_goblin.n3chr",   # small mob, newer format
+    _ASSETS / "Chr"   / "el_dong_gold.n3chr", # NPC with parts, plugs, anim
+    _ASSETS / "Chr"   / "npc_dong_gold.n3chr",# large NPC with multiple plugs
 ]
 
 

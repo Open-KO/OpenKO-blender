@@ -19,5 +19,12 @@ jobs:
       - name: Install dependencies
         run: pip install pytest
 
+      - name: Download test assets
+        run: |
+          curl -L "https://stephenmeiernet.wordpress.com/wp-content/uploads/2026/03/ko_assets-1.zip" -o ko_assets.zip
+          unzip ko_assets.zip -d ko_assets
+
       - name: Run tests
         run: pytest
+        env:
+          KO_ASSETS: ko_assets/Client
