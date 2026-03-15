@@ -122,7 +122,7 @@ pip install pytest
 pytest tests/
 ```
 
-Tests require real KnightOnline asset files placed in the fixtures directory defined in `tests/conftest.py`.
+Tests require real KnightOnline asset files. Download the [test assets](https://stephenmeiernet.wordpress.com/wp-content/uploads/2026/03/ko_assets-4.zip) and extract to `ko_assets/` in the project root, or set the `KO_ASSETS` environment variable to point to your local `Client/` directory.
 
 ---
 
