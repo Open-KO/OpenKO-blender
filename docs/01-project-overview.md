@@ -4,7 +4,7 @@
 
 A professional Blender addon for importing KnightOnline game assets into Blender. It targets the KnightOnline open-source community and serves modders, artists, and developers who want to work with KO assets in a modern 3D environment.
 
-This project is a ground-up rewrite of a working prototype (`ko-assets-blender`) with emphasis on:
+This project is a Blender extension built with emphasis on:
 - Professional code structure and maintainability
 - Great user experience (helpful error messages, import options, progress feedback)
 - Correct versioning and easy distribution
@@ -14,10 +14,9 @@ This project is a ground-up rewrite of a working prototype (`ko-assets-blender`)
 
 ## Reference Projects
 
-| Source | Path | Purpose |
-|--------|------|---------|
-| Working prototype | `C:\Users\srmeier\Projects\ko-ripping\ko-assets-blender` | Reference for binary parsing logic and Blender API usage |
-| KnightOnline C++ source | `C:\Users\srmeier\Projects\KnightOnline` | Authoritative source for binary format structs and field meanings |
+| Source | Purpose |
+|--------|---------|
+| [KnightOnline C++ source](https://github.com/Open-KO/KnightOnline) | Authoritative source for binary format structs and field meanings |
 
 ---
 

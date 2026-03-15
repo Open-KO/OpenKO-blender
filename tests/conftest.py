@@ -4,16 +4,17 @@ Shared pytest fixtures pointing to real KnightOnline asset files.
 All paths are absolute so tests can be run from any working directory.
 """
 
+import os
 from pathlib import Path
 
 import pytest
 
-ASSETS = Path(r"C:\Users\srmeier\Projects\KnightOnline\assets\Client")
-CHR = ASSETS / "Chr"
-CHR_SELECT = ASSETS / "ChrSelect"
-MISC = ASSETS / "Misc"
-OBJECT = ASSETS / "Object"
-ITEM = ASSETS / "Item"
+ASSETS = Path(os.environ.get("KO_ASSETS", "ko_assets/Client"))
+CHR = ASSETS / "chr"
+CHR_SELECT = ASSETS / "chrselect"
+MISC = ASSETS / "misc"
+OBJECT = ASSETS / "object"
+ITEM = ASSETS / "item"
 
 
 def _require(path: Path) -> Path:

@@ -1,0 +1,30 @@
+name: Test
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pytest
+
+      - name: Download test assets
+        run: |
+          curl -L "https://stephenmeiernet.wordpress.com/wp-content/uploads/2026/03/ko_assets-4.zip" -o ko_assets.zip
+          unzip ko_assets.zip -d ko_assets
+
+      - name: Run tests
+        run: pytest
+        env:
+          KO_ASSETS: ko_assets/Client

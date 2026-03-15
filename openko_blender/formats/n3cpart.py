@@ -2,11 +2,12 @@
 Parsers for .n3cpart (CN3CPart) and .n3cskins (CN3CPartSkins / CN3Skin).
 
 .n3cpart binary layout:
-  string      name            (CN3BaseFileAccess)
-  int32       _reserved
-  Material    material        (92 bytes)
-  string      tex_filename    (references a .dxt file)
-  string      skins_filename  (references a .n3cskins file)
+  string      name              (CN3BaseFileAccess)
+  int32       version           (0 = original; 1 = adds a second texture)
+  Material    material          (92 bytes)
+  string      tex_filename      (references a .dxt file)
+  string      tex_diffuse_filename  (only present when version == 1)
+  string      skins_filename    (references a .n3cskins file)
 
 .n3cskins binary layout:
   string      name            (CN3BaseFileAccess)
@@ -77,8 +78,9 @@ class Skin:
 class N3CPart:
     name: str
     material: Material
-    tex_filename: str    # relative filename of .dxt texture
-    skins_filename: str  # relative filename of .n3cskins
+    tex_filename: str           # relative filename of .dxt texture
+    skins_filename: str         # relative filename of .n3cskins
+    tex_diffuse_filename: str = ""  # only present when version == 1
     skins: list[Skin | None] = field(default_factory=list)  # 4 LOD levels
 
 
@@ -92,9 +94,10 @@ def load(path: Path | str) -> N3CPart:
     r = BinaryReader.from_file(path)
 
     name = read_name(r)
-    _reserved = r.read_int32()
+    version = r.read_int32()
     material = read_material(r)
     tex_filename = r.read_string()
+    tex_diffuse_filename = r.read_string() if version == 1 else ""
     skins_filename = r.read_string()
 
     # Resolve and load the skins file
@@ -108,6 +111,7 @@ def load(path: Path | str) -> N3CPart:
         name=name,
         material=material,
         tex_filename=tex_filename,
+        tex_diffuse_filename=tex_diffuse_filename,
         skins_filename=skins_filename,
         skins=skins,
     )

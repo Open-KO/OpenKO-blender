@@ -151,7 +151,7 @@ The GitHub Release ZIP can always be installed manually. This is important for:
 
 ```bash
 # Clone the repo
-git clone https://github.com/your-org/openko-blender.git
+git clone https://github.com/Open-KO/openko-blender.git
 cd openko-blender
 
 # Option A: Symlink into Blender's extension directory (recommended)

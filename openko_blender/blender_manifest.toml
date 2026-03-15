@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 id = "openko_blender"
-version = "1.0.0"
+version = "1.0.1"
 name = "OpenKO Assets"
 tagline = "Import KnightOnline game assets"
 maintainer = "srmeier"
@@ -8,7 +8,3 @@ type = "add-on"
 blender_version_min = "4.2.0"
 license = ["SPDX:GPL-2.0-or-later"]
 tags = ["Import-Export", "Game Engine"]
-
-# wheels = [
-#   "./wheels/Pillow-*.whl",
-# ]

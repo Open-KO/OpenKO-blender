@@ -12,8 +12,8 @@ Binary layout:
   AnimKey     key_pos             (CN3Transform — 3 anim keys, typically empty)
   AnimKey     key_rot
   AnimKey     key_scale
-  int32       coll_vc             (CN3TransformCollision)
-  int32       coll_fc
+  string      coll_mesh_filename  (CN3TransformCollision — skipped)
+  string      climb_mesh_filename
   int32       part_count          (CN3Shape)
   [per part (CN3SPart)]:
     Vector3   pivot
@@ -82,12 +82,8 @@ def load(path: Path | str) -> N3Shape:
     _key_scale = read_anim_key(r)
 
     # ── CN3TransformCollision ──────────────────────────────────────────────
-    coll_vc = r.read_int32()
-    coll_fc = r.read_int32()
-    if coll_vc > 0 or coll_fc > 0:
-        raise ValueError(
-            f"Collision mesh in .n3shape ({coll_vc} verts, {coll_fc} faces) is not yet supported."
-        )
+    r.read_string()  # szCollisionMeshFilename — skipped
+    r.read_string()  # szClimbMeshFilename — skipped
 
     # ── CN3Shape ──────────────────────────────────────────────────────────
     part_count = r.read_int32()

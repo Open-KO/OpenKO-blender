@@ -11,10 +11,10 @@ Binary layout:
   Matrix44    rot_matrix      (64 bytes, rotation only)
   Vector3     scale
   Material    material        (92 bytes)
-  string      pmesh_filename  (references .n3pmesh)
+  string      mesh_filename   (references .n3pmesh or .n3mesh)
   string      tex_filename    (references .dxt)
-  int32       trace_step      (CN3CPlug extension — skip data if > 0)
-  int32       use_vmesh       (CN3CPlug extension — skip data if != 0)
+  int32       trace_step      (CN3CPlug extension — trace data present when > 0)
+  int32       use_vmesh       (CN3CPlug extension — VirtualMesh data present when != 0)
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ class N3CPlug:
     rot_matrix: tuple       # 4×4 tuple (row-major)
     scale: Vector3
     material: Material
-    pmesh_filename: str
+    mesh_filename: str      # .n3pmesh or .n3mesh
     tex_filename: str
     pmesh: "_n3pmesh.N3PMesh | None" = None
 
@@ -68,7 +68,7 @@ def load(path: Path | str) -> N3CPlug:
     scale = Vector3(*r.read_vector3())
     material = read_material(r)
 
-    pmesh_filename = r.read_string()
+    mesh_filename = r.read_string()  # .n3pmesh or .n3mesh
     tex_filename = r.read_string()
 
     # CN3CPlug-specific extensions — these fields are absent in older file versions
@@ -86,10 +86,10 @@ def load(path: Path | str) -> N3CPlug:
                 "VirtualMesh (use_vmesh) in .n3cplug is not yet supported."
             )
 
-    # Load the referenced progressive mesh
+    # Load the referenced mesh
     pmesh = None
-    if pmesh_filename:
-        pmesh_path = resolve_asset_path(path, pmesh_filename)
+    if mesh_filename:
+        pmesh_path = resolve_asset_path(path, mesh_filename)
         if pmesh_path:
             pmesh = _n3pmesh.load(pmesh_path)
 
@@ -101,7 +101,7 @@ def load(path: Path | str) -> N3CPlug:
         rot_matrix=rot_matrix,
         scale=scale,
         material=material,
-        pmesh_filename=pmesh_filename,
+        mesh_filename=mesh_filename,
         tex_filename=tex_filename,
         pmesh=pmesh,
     )

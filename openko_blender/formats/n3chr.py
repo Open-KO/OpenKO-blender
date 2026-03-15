@@ -23,6 +23,7 @@ Binary layout:
   int32 × MAX_CHR_ANI_PART        (joint_part_starts)
   int32 × MAX_CHR_ANI_PART        (joint_part_ends)
   string      fx_plug_filename    (added 2002-10-10; absent in older files)
+  string      coll_skin_filename  (added for v1298; absent in older files)
 """
 
 from __future__ import annotations
@@ -117,6 +118,10 @@ def load(path: Path | str) -> N3Chr:
         r.read_int32()
 
     # FX plug filename — added 2002-10-10; absent in older files.
+    if r.remaining >= 4:
+        r.read_string()
+
+    # Collision skin filename — added for v1298; absent in older files.
     if r.remaining >= 4:
         r.read_string()
 

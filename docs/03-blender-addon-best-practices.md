@@ -37,7 +37,7 @@ type = "add-on"
 blender_version_min = "4.2.0"
 license = ["SPDX:GPL-2.0-or-later"]
 tags = ["Import-Export", "Game Engine"]
-website = "https://github.com/your-org/openko-blender"
+website = "https://github.com/Open-KO/openko-blender"
 ```
 
 **Rules:**
