@@ -35,9 +35,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ._base import read_anim_key, read_material, read_name, resolve_asset_path
+from ._write import write_empty_anim_key, write_material, write_name
 from .structs import Material, Quaternion, Vector3
 from . import n3pmesh as _n3pmesh
 from ..utils.binary_reader import BinaryReader
+from ..utils.binary_writer import BinaryWriter
 
 
 @dataclass
@@ -135,3 +137,41 @@ def load(path: Path | str) -> N3Shape:
         npc_id=npc_id,
         npc_status=npc_status,
     )
+
+
+# ── Save ─────────────────────────────────────────────────────────────────────
+
+
+def save(shape: N3Shape, path: Path | str) -> None:
+    """Write an N3Shape to a .n3shape file."""
+    w = BinaryWriter()
+
+    write_name(w, shape.name)
+    w.write_vector3(shape.pos.x, shape.pos.y, shape.pos.z)
+    w.write_quaternion(shape.rot.x, shape.rot.y, shape.rot.z, shape.rot.w)
+    w.write_vector3(shape.scale.x, shape.scale.y, shape.scale.z)
+    # Bind-pose animation keys — always empty for shapes
+    write_empty_anim_key(w)
+    write_empty_anim_key(w)
+    write_empty_anim_key(w)
+
+    w.write_string(shape.collision_mesh_filename)
+    w.write_string(shape.climb_mesh_filename)
+
+    w.write_int32(len(shape.parts))
+    for part in shape.parts:
+        w.write_vector3(part.pivot.x, part.pivot.y, part.pivot.z)
+        w.write_string(part.mesh_filename)
+        write_material(w, part.material)
+        w.write_int32(len(part.tex_filenames))
+        w.write_float(part.tex_fps)
+        for tex_fn in part.tex_filenames:
+            w.write_string(tex_fn)
+
+    w.write_int32(shape.belong_id)
+    w.write_int32(shape.event_id)
+    w.write_int32(shape.event_type)
+    w.write_int32(shape.npc_id)
+    w.write_int32(shape.npc_status)
+
+    w.to_file(path)

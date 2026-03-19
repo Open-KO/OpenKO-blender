@@ -42,8 +42,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ._base import read_material, read_name, resolve_asset_path
+from ._write import write_material, write_name
 from .structs import Material, UV, Vector3
 from ..utils.binary_reader import BinaryReader
+from ..utils.binary_writer import BinaryWriter
 
 MAX_CHR_LOD = 4
 
@@ -196,3 +198,78 @@ def _read_skin(r: BinaryReader) -> Skin:
         uv_indices=uv_indices,
         skin_vertices=skin_vertices,
     )
+
+
+# ── Save ─────────────────────────────────────────────────────────────────────
+
+
+def save(part: N3CPart, path: Path | str) -> None:
+    """Write an N3CPart to a .n3cpart file."""
+    w = BinaryWriter()
+
+    write_name(w, part.name)
+    w.write_int32(part.version)  # m_dwReserved
+    write_material(w, part.material)
+    w.write_string(part.tex_filename)
+    if part.version == 1:
+        w.write_string(part.tex_diffuse_filename)
+    w.write_string(part.skins_filename)
+
+    w.to_file(path)
+
+
+def save_skins(skins: list[Skin | None], name: str, path: Path | str) -> None:
+    """Write a .n3cskins file containing up to 4 LOD levels.
+
+    Empty LOD slots are written with face_count=0, vertex_count=0, uv_count=0.
+    """
+    w = BinaryWriter()
+
+    write_name(w, name)
+
+    for i in range(MAX_CHR_LOD):
+        skin = skins[i] if i < len(skins) else None
+        _write_skin(w, skin)
+
+    w.to_file(path)
+
+
+def _write_skin(w: BinaryWriter, skin: Skin | None) -> None:
+    """Write one CN3Skin LOD level."""
+    if skin is None or skin.vertex_count == 0:
+        write_name(w, "")
+        w.write_int32(0)  # face_count
+        w.write_int32(0)  # vertex_count
+        w.write_int32(0)  # uv_count
+        return
+
+    write_name(w, skin.name)
+    w.write_int32(skin.face_count)
+    w.write_int32(skin.vertex_count)
+    w.write_int32(skin.uv_count)
+
+    if skin.face_count > 0 and skin.vertex_count > 0:
+        for pos, normal in skin.vertices:
+            w.write_vertex((pos.x, pos.y, pos.z), (normal.x, normal.y, normal.z))
+        for idx in skin.face_indices:
+            w.write_int16(idx)
+
+    if skin.uv_count > 0:
+        for uv in skin.uvs:
+            w.write_uv(uv.u, uv.v)
+        for idx in skin.uv_indices:
+            w.write_int16(idx)
+
+    for sv in skin.skin_vertices:
+        w.write_vector3(sv.origin.x, sv.origin.y, sv.origin.z)
+        w.write_int32(sv.n_affect)
+        w.write_int32(0)  # serialized pointer (unused)
+        w.write_int32(0)  # serialized pointer (unused)
+
+        if sv.n_affect > 1:
+            for ji in sv.joint_indices:
+                w.write_int32(ji)
+            for wt in sv.weights:
+                w.write_float(wt)
+        elif sv.n_affect == 1:
+            w.write_int32(sv.joint_indices[0])

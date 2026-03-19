@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..utils.binary_reader import BinaryReader
+from ..utils.binary_writer import BinaryWriter
 
 
 @dataclass
@@ -98,3 +99,27 @@ def load(path: Path | str) -> N3AnimControl:
         ))
 
     return N3AnimControl(animations=animations)
+
+
+def save(anim_ctrl: N3AnimControl, path: Path | str) -> None:
+    """Write an N3AnimControl to a .n3anim file."""
+    w = BinaryWriter()
+
+    w.write_int32(len(anim_ctrl.animations))
+
+    for anim in anim_ctrl.animations:
+        w.write_int32(0)  # reserved (was pointer address)
+        w.write_float(anim.frm_start)
+        w.write_float(anim.frm_end)
+        w.write_float(anim.frm_per_sec)
+        w.write_float(anim.frm_plug_trace_start)
+        w.write_float(anim.frm_plug_trace_end)
+        w.write_float(anim.frm_sound_0)
+        w.write_float(anim.frm_sound_1)
+        w.write_float(anim.time_blend)
+        w.write_int32(anim.blend_flags)
+        w.write_float(anim.frm_strike_0)
+        w.write_float(anim.frm_strike_1)
+        w.write_string(anim.name)
+
+    w.to_file(path)

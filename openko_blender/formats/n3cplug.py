@@ -23,9 +23,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ._base import read_material, read_name, resolve_asset_path
+from ._write import write_material, write_name
 from .structs import Material, PlugType, Vector3
 from . import n3pmesh as _n3pmesh
 from ..utils.binary_reader import BinaryReader
+from ..utils.binary_writer import BinaryWriter
 
 
 @dataclass
@@ -117,3 +119,33 @@ def load(path: Path | str) -> N3CPlug:
         trace1=trace1,
         pmesh=pmesh,
     )
+
+
+# ── Save ─────────────────────────────────────────────────────────────────────
+
+
+def save(plug: N3CPlug, path: Path | str) -> None:
+    """Write an N3CPlug to a .n3cplug file."""
+    w = BinaryWriter()
+
+    write_name(w, plug.name)
+    w.write_uint32(int(plug.plug_type))
+    w.write_int32(plug.joint_index)
+    w.write_vector3(plug.position.x, plug.position.y, plug.position.z)
+    w.write_matrix44(plug.rot_matrix)
+    w.write_vector3(plug.scale.x, plug.scale.y, plug.scale.z)
+    write_material(w, plug.material)
+    w.write_string(plug.mesh_filename)
+    w.write_string(plug.tex_filename)
+
+    # Trace data
+    w.write_int32(plug.trace_step)
+    if plug.trace_step > 0:
+        w.write_uint32(plug.trace_color)
+        w.write_float(plug.trace0)
+        w.write_float(plug.trace1)
+
+    # VirtualMesh flag — always 0 (not supported)
+    w.write_int32(0)
+
+    w.to_file(path)

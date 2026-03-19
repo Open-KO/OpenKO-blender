@@ -25,8 +25,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ._base import read_anim_key, read_name
+from ._write import write_anim_key, write_name
 from .structs import AnimKey, Quaternion, Vector3
 from ..utils.binary_reader import BinaryReader
+from ..utils.binary_writer import BinaryWriter
 
 # Identity quaternion (no rotation)
 _IDENTITY_QUAT = Quaternion(0.0, 0.0, 0.0, 1.0)
@@ -166,3 +168,29 @@ def _mat4_scale(m: tuple, s: Vector3) -> tuple[tuple[float, ...], ...]:
         (m[2][0] * s.x, m[2][1] * s.y, m[2][2] * s.z, m[2][3]),
         (m[3][0] * s.x, m[3][1] * s.y, m[3][2] * s.z, m[3][3]),
     )
+
+
+# ── Save ─────────────────────────────────────────────────────────────────────
+
+
+def save(root_joint: Joint, path: Path | str) -> None:
+    """Write a Joint hierarchy to a .n3joint file."""
+    w = BinaryWriter()
+    _write_joint(w, root_joint)
+    w.to_file(path)
+
+
+def _write_joint(w: BinaryWriter, joint: Joint) -> None:
+    """Recursively write one CN3Joint node."""
+    write_name(w, joint.name)
+    w.write_vector3(joint.pos.x, joint.pos.y, joint.pos.z)
+    w.write_quaternion(joint.rot.x, joint.rot.y, joint.rot.z, joint.rot.w)
+    w.write_vector3(joint.scale.x, joint.scale.y, joint.scale.z)
+    write_anim_key(w, joint.key_pos)
+    write_anim_key(w, joint.key_rot)
+    write_anim_key(w, joint.key_scale)
+    write_anim_key(w, joint.key_orient)
+
+    w.write_int32(len(joint.children))
+    for child in joint.children:
+        _write_joint(w, child)

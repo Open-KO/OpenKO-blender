@@ -32,12 +32,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ._base import read_anim_key, read_name, resolve_asset_path
+from ._write import write_empty_anim_key, write_name
 from .structs import Quaternion, Vector3
 from . import n3anim as _n3anim
 from . import n3cpart as _n3cpart
 from . import n3cplug as _n3cplug
 from . import n3joint as _n3joint
 from ..utils.binary_reader import BinaryReader
+from ..utils.binary_writer import BinaryWriter
 
 MAX_CHR_ANI_PART = 2
 
@@ -160,3 +162,52 @@ def load(path: Path | str) -> N3Chr:
         fx_plug_name=fx_plug_name,
         collision_skin_name=coll_skin_name,
     )
+
+
+# ── Save ─────────────────────────────────────────────────────────────────────
+
+
+def save(chr_data: N3Chr, path: Path | str) -> None:
+    """Write an N3Chr to a .n3chr file.
+
+    Only writes the character root file with filename references to sub-files.
+    Sub-files (.n3joint, .n3cpart, .n3cplug, .n3anim) must be written
+    separately using their respective save functions.
+    """
+    w = BinaryWriter()
+
+    write_name(w, chr_data.name)
+    w.write_vector3(chr_data.pos.x, chr_data.pos.y, chr_data.pos.z)
+    w.write_quaternion(chr_data.rot.x, chr_data.rot.y, chr_data.rot.z, chr_data.rot.w)
+    w.write_vector3(chr_data.scale.x, chr_data.scale.y, chr_data.scale.z)
+    # Bind-pose animation keys — always empty for characters
+    write_empty_anim_key(w)
+    write_empty_anim_key(w)
+    write_empty_anim_key(w)
+
+    w.write_string(chr_data.collision_mesh_filename)
+    w.write_string(chr_data.climb_mesh_filename)
+
+    w.write_string(chr_data.joint_filename)
+
+    w.write_int32(len(chr_data.part_filenames))
+    for pf in chr_data.part_filenames:
+        w.write_string(pf)
+
+    w.write_int32(len(chr_data.plug_filenames))
+    for pf in chr_data.plug_filenames:
+        w.write_string(pf)
+
+    w.write_string(chr_data.anim_filename)
+
+    for i in range(MAX_CHR_ANI_PART):
+        v = chr_data.joint_part_starts[i] if i < len(chr_data.joint_part_starts) else 0
+        w.write_int32(v)
+    for i in range(MAX_CHR_ANI_PART):
+        v = chr_data.joint_part_ends[i] if i < len(chr_data.joint_part_ends) else 0
+        w.write_int32(v)
+
+    w.write_string(chr_data.fx_plug_name)
+    w.write_string(chr_data.collision_skin_name)
+
+    w.to_file(path)
