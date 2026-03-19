@@ -156,34 +156,62 @@ def menu_func_import(self, context):
 
 
 def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations):
-    """Import a full character: armature + skinned parts + plugs + all animations."""
+    """Import a full character: armature + skinned parts + plugs + all animations.
+
+    Each referenced sub-file (.n3joint, .n3cpart, .n3cplug) gets its own child
+    collection with ExportFilename / ExportFileType, so the hierarchy mirrors
+    the KO file references and individual pieces can be rearranged in the
+    Outliner for export.
+    """
     from ..formats import n3chr as _n3chr
     from ..blender import armature_builder, material_builder, mesh_builder
 
     chr_data = _n3chr.load(filepath)
     chr_name = chr_data.name or filepath.stem
 
-    # Root collection for this character
+    # ── Root collection (.n3chr) ──────────────────────────────────────────────
     chr_col = bpy.data.collections.new(chr_name)
     context.scene.collection.children.link(chr_col)
 
-    # ── Armature ──────────────────────────────────────────────────────────────
+    chr_col["ExportFilename"] = filepath.stem
+    chr_col["ExportFileType"] = ".n3chr"
+    chr_col["szCollisionMeshFilename"] = chr_data.collision_mesh_filename
+    chr_col["szClimbMeshFilename"] = chr_data.climb_mesh_filename
+    chr_col["m_nJointPartStarts"] = chr_data.joint_part_starts
+    chr_col["m_nJointPartEnds"] = chr_data.joint_part_ends
+    chr_col["szFXPlugName"] = chr_data.fx_plug_name
+    chr_col["szCollisionSkinName"] = chr_data.collision_skin_name
+
+    # ── Skeleton (.n3joint) ───────────────────────────────────────────────────
     arm_data = None
     if chr_data.joint is not None:
+        joint_stem = Path(chr_data.joint_filename).stem if chr_data.joint_filename else chr_name
+        joint_col = bpy.data.collections.new(joint_stem)
+        chr_col.children.link(joint_col)
+        joint_col["ExportFilename"] = joint_stem
+        joint_col["ExportFileType"] = ".n3joint"
+
+        # Animation reference lives on the joint collection
+        if chr_data.anim_filename:
+            joint_col["szAnimFilename"] = chr_data.anim_filename
+
         arm_data = armature_builder.build_armature(
-            context, chr_data.joint, chr_name, chr_col
+            context, chr_data.joint, chr_name, joint_col
         )
         if scale != 1.0:
             arm_data.rig.scale = (scale, scale, scale)
 
-    # ── Skinned parts ─────────────────────────────────────────────────────────
-    parts_col = bpy.data.collections.new(f"{chr_name} Parts")
-    chr_col.children.link(parts_col)
-
-    for part in chr_data.parts:
+    # ── Skinned parts (.n3cpart each) ─────────────────────────────────────────
+    for part, part_filename in zip(chr_data.parts, chr_data.part_filenames):
         skin = _pick_lod(part.skins, lod)
         if skin is None:
             continue
+
+        part_stem = Path(part_filename).stem if part_filename else (part.name or filepath.stem)
+        part_col = bpy.data.collections.new(part_stem)
+        chr_col.children.link(part_col)
+        part_col["ExportFilename"] = part_stem
+        part_col["ExportFileType"] = ".n3cpart"
 
         obj_name = skin.name or part.name or filepath.stem
         obj = mesh_builder.build_skinned_mesh(skin, obj_name)
@@ -194,7 +222,10 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
             mesh_builder.apply_skin_weights(obj, skin, arm_data.all_joints_by_idx)
             mesh_builder.add_armature_modifier(obj, arm_data.rig)
 
-        parts_col.objects.link(obj)
+        part_col.objects.link(obj)
+
+        # Part metadata
+        obj["m_dwReserved"] = part.version
 
         if not skip_textures and part.tex_filename:
             image = material_builder.resolve_and_load_texture(
@@ -206,20 +237,30 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
             mat = material_builder.create_material(obj_name, image, part.material)
             material_builder.apply_material(obj, mat)
 
-    # ── Plugs (static weapon / equipment meshes) ──────────────────────────────
-    plugs_col = bpy.data.collections.new(f"{chr_name} Plugs")
-    chr_col.children.link(plugs_col)
-
-    for plug in chr_data.plugs:
+    # ── Plugs (.n3cplug each) ─────────────────────────────────────────────────
+    for plug, plug_filename in zip(chr_data.plugs, chr_data.plug_filenames):
         if plug.pmesh is None:
             continue
+
+        plug_stem = Path(plug_filename).stem if plug_filename else (plug.name or filepath.stem)
+        plug_col = bpy.data.collections.new(plug_stem)
+        chr_col.children.link(plug_col)
+        plug_col["ExportFilename"] = plug_stem
+        plug_col["ExportFileType"] = ".n3cplug"
 
         obj_name = plug.name or filepath.stem
         obj = mesh_builder.build_static_mesh(plug.pmesh, obj_name)
         if scale != 1.0:
             obj.scale = (scale, scale, scale)
 
-        plugs_col.objects.link(obj)
+        plug_col.objects.link(obj)
+
+        # Plug metadata
+        obj["m_ePlugType"] = int(plug.plug_type)
+        obj["m_nTraceStep"] = plug.trace_step
+        obj["m_crTrace"] = plug.trace_color
+        obj["m_fTrace0"] = plug.trace0
+        obj["m_fTrace1"] = plug.trace1
 
         if not skip_textures and plug.tex_filename:
             image = material_builder.resolve_and_load_texture(
@@ -257,6 +298,17 @@ def _import_n3shape(context, filepath, lod, scale, skip_textures, skip_animation
     shape_col = bpy.data.collections.new(shape_name)
     context.scene.collection.children.link(shape_col)
 
+    # Collection-level custom properties
+    shape_col["ExportFilename"] = filepath.stem
+    shape_col["ExportFileType"] = ".n3shape"
+    shape_col["szCollisionMeshFilename"] = shape.collision_mesh_filename
+    shape_col["szClimbMeshFilename"] = shape.climb_mesh_filename
+    shape_col["m_iBelong"] = shape.belong_id
+    shape_col["m_iEventID"] = shape.event_id
+    shape_col["m_iEventType"] = shape.event_type
+    shape_col["m_iNPC_ID"] = shape.npc_id
+    shape_col["m_iNPC_Status"] = shape.npc_status
+
     for part in shape.parts:
         if part.pmesh is None:
             continue
@@ -267,6 +319,11 @@ def _import_n3shape(context, filepath, lod, scale, skip_textures, skip_animation
             obj.scale = (scale, scale, scale)
 
         shape_col.objects.link(obj)
+
+        # Shape part metadata
+        obj["m_vPivot"] = [part.pivot.x, part.pivot.y, part.pivot.z]
+        obj["m_fTexFPS"] = part.tex_fps
+        obj["m_TexRefs"] = part.tex_filenames
 
         if not skip_textures and part.tex_filenames:
             image = material_builder.resolve_and_load_texture(
@@ -289,11 +346,21 @@ def _import_n3cpart(context, filepath, lod, scale, skip_textures, skip_animation
         return {'CANCELLED'}
 
     name = skin.name or part.name or filepath.stem
+
+    # Collection for this part
+    col = bpy.data.collections.new(name)
+    context.scene.collection.children.link(col)
+    col["ExportFilename"] = filepath.stem
+    col["ExportFileType"] = ".n3cpart"
+
     obj = mesh_builder.build_skinned_mesh(skin, name)
     if scale != 1.0:
         obj.scale = (scale, scale, scale)
 
-    context.scene.collection.objects.link(obj)
+    col.objects.link(obj)
+
+    # Part metadata
+    obj["m_dwReserved"] = part.version
 
     if not skip_textures and part.tex_filename:
         image = material_builder.resolve_and_load_texture(
@@ -315,11 +382,25 @@ def _import_n3cplug(context, filepath, lod, scale, skip_textures, skip_animation
         return {'CANCELLED'}
 
     name = plug.name or filepath.stem
+
+    # Collection for this plug
+    col = bpy.data.collections.new(name)
+    context.scene.collection.children.link(col)
+    col["ExportFilename"] = filepath.stem
+    col["ExportFileType"] = ".n3cplug"
+
     obj = mesh_builder.build_static_mesh(plug.pmesh, name)
     if scale != 1.0:
         obj.scale = (scale, scale, scale)
 
-    context.scene.collection.objects.link(obj)
+    col.objects.link(obj)
+
+    # Plug metadata
+    obj["m_ePlugType"] = int(plug.plug_type)
+    obj["m_nTraceStep"] = plug.trace_step
+    obj["m_crTrace"] = plug.trace_color
+    obj["m_fTrace0"] = plug.trace0
+    obj["m_fTrace1"] = plug.trace1
 
     if not skip_textures and plug.tex_filename:
         image = material_builder.resolve_and_load_texture(
@@ -338,7 +419,14 @@ def _import_n3joint(context, filepath, lod, scale, skip_textures, skip_animation
 
     root_joint = _n3joint.load(filepath)
     name = root_joint.name or filepath.stem
-    arm_data = armature_builder.build_armature(context, root_joint, name)
+
+    # Collection for this joint
+    col = bpy.data.collections.new(name)
+    context.scene.collection.children.link(col)
+    col["ExportFilename"] = filepath.stem
+    col["ExportFileType"] = ".n3joint"
+
+    arm_data = armature_builder.build_armature(context, root_joint, name, col)
     if scale != 1.0:
         arm_data.rig.scale = (scale, scale, scale)
 
@@ -346,7 +434,12 @@ def _import_n3joint(context, filepath, lod, scale, skip_textures, skip_animation
 
 
 def _import_n3anim(context, filepath, lod, scale, skip_textures, skip_animations):
-    """Import animation metadata as a text block (no geometry to display)."""
+    """Import animation metadata as a text block (no geometry to display).
+
+    When imported standalone, animation metadata is stored in a text block for
+    review.  When imported as part of .n3chr, the metadata is stored as custom
+    properties on the Blender Actions instead (see armature_builder).
+    """
     from ..formats import n3anim as _n3anim
 
     anim_ctrl = _n3anim.load(filepath)
@@ -377,11 +470,18 @@ def _import_n3pmesh(context, filepath, lod, scale, skip_textures, skip_animation
 
     pmesh = _n3pmesh.load(filepath)
     name = pmesh.name or filepath.stem
+
+    # Collection for this mesh
+    col = bpy.data.collections.new(name)
+    context.scene.collection.children.link(col)
+    col["ExportFilename"] = filepath.stem
+    col["ExportFileType"] = ".n3pmesh"
+
     obj = mesh_builder.build_static_mesh(pmesh, name)
     if scale != 1.0:
         obj.scale = (scale, scale, scale)
 
-    context.scene.collection.objects.link(obj)
+    col.objects.link(obj)
     return {'FINISHED'}
 
 

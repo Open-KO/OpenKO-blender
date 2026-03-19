@@ -63,15 +63,12 @@ def read_transform(r: BinaryReader) -> tuple:
 def read_transform_collision(r: BinaryReader) -> tuple:
     """CN3TransformCollision::Load — reads transform then two collision mesh filenames.
 
-    The collision mesh and climb mesh filenames are read and discarded;
-    collision geometry is not used for import.
-
-    Returns: same as read_transform()
+    Returns: (*read_transform(), collision_mesh_filename, climb_mesh_filename)
     """
     result = read_transform(r)
-    r.read_string()  # szCollisionMeshFilename
-    r.read_string()  # szClimbMeshFilename
-    return result
+    coll_mesh = r.read_string()   # szCollisionMeshFilename
+    climb_mesh = r.read_string()  # szClimbMeshFilename
+    return (*result, coll_mesh, climb_mesh)
 
 
 def read_material(r: BinaryReader) -> Material:

@@ -177,6 +177,16 @@ def build_animations(
         if first_action is None:
             first_action = action
 
+        # Store animation metadata as custom properties on the Action
+        action["fFrmPlugTraceStart"] = anim_data.frm_plug_trace_start
+        action["fFrmPlugTraceEnd"] = anim_data.frm_plug_trace_end
+        action["fFrmSound0"] = anim_data.frm_sound_0
+        action["fFrmSound1"] = anim_data.frm_sound_1
+        action["fFrmStrike0"] = anim_data.frm_strike_0
+        action["fFrmStrike1"] = anim_data.frm_strike_1
+        action["fTimeBlend"] = anim_data.time_blend
+        action["iBlendFlags"] = anim_data.blend_flags
+
         frame = 1
         fFrm = anim_data.frm_start
         while fFrm <= anim_data.frm_end:

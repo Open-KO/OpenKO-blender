@@ -57,7 +57,10 @@ class N3Shape:
     rot: Quaternion
     scale: Vector3
     parts: list[ShapePart] = field(default_factory=list)
-    # Game-logic fields (stored but not used for import)
+    # CN3TransformCollision
+    collision_mesh_filename: str = ""
+    climb_mesh_filename: str = ""
+    # Game-logic fields
     belong_id: int = 0
     event_id: int = 0
     event_type: int = 0
@@ -82,8 +85,8 @@ def load(path: Path | str) -> N3Shape:
     _key_scale = read_anim_key(r)
 
     # ── CN3TransformCollision ──────────────────────────────────────────────
-    r.read_string()  # szCollisionMeshFilename — skipped
-    r.read_string()  # szClimbMeshFilename — skipped
+    coll_mesh = r.read_string()   # szCollisionMeshFilename
+    climb_mesh = r.read_string()  # szClimbMeshFilename
 
     # ── CN3Shape ──────────────────────────────────────────────────────────
     part_count = r.read_int32()
@@ -124,6 +127,8 @@ def load(path: Path | str) -> N3Shape:
         rot=rot,
         scale=scale,
         parts=parts,
+        collision_mesh_filename=coll_mesh,
+        climb_mesh_filename=climb_mesh,
         belong_id=belong_id,
         event_id=event_id,
         event_type=event_type,

@@ -81,6 +81,7 @@ class N3CPart:
     tex_filename: str           # relative filename of .dxt texture
     skins_filename: str         # relative filename of .n3cskins
     tex_diffuse_filename: str = ""  # only present when version == 1
+    version: int = 0            # m_dwReserved (0 = original, 1 = second texture)
     skins: list[Skin | None] = field(default_factory=list)  # 4 LOD levels
 
 
@@ -112,6 +113,7 @@ def load(path: Path | str) -> N3CPart:
         material=material,
         tex_filename=tex_filename,
         tex_diffuse_filename=tex_diffuse_filename,
+        version=version,
         skins_filename=skins_filename,
         skins=skins,
     )

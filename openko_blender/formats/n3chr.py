@@ -48,10 +48,22 @@ class N3Chr:
     pos: Vector3
     rot: Quaternion
     scale: Vector3
+    joint_filename: str = ""
     joint: "_n3joint.Joint | None" = None
+    part_filenames: list[str] = field(default_factory=list)
     parts: "list[_n3cpart.N3CPart]" = field(default_factory=list)
+    plug_filenames: list[str] = field(default_factory=list)
     plugs: "list[_n3cplug.N3CPlug]" = field(default_factory=list)
+    anim_filename: str = ""
     anim_control: "_n3anim.N3AnimControl | None" = None
+    # CN3TransformCollision
+    collision_mesh_filename: str = ""
+    climb_mesh_filename: str = ""
+    # CN3Chr metadata
+    joint_part_starts: list[int] = field(default_factory=list)
+    joint_part_ends: list[int] = field(default_factory=list)
+    fx_plug_name: str = ""
+    collision_skin_name: str = ""
 
 
 def load(path: Path | str) -> N3Chr:
@@ -73,8 +85,8 @@ def load(path: Path | str) -> N3Chr:
     # ── CN3TransformCollision ──────────────────────────────────────────────
     # CN3TransformCollision::Load() reads two length-prefixed mesh filenames
     # (collision mesh + climb mesh). Both are almost always empty strings.
-    _coll_mesh = r.read_string()
-    _climb_mesh = r.read_string()
+    coll_mesh = r.read_string()
+    climb_mesh = r.read_string()
 
     # ── CN3Chr ────────────────────────────────────────────────────────────
     joint_filename = r.read_string()
@@ -85,21 +97,25 @@ def load(path: Path | str) -> N3Chr:
             joint = _n3joint.load(joint_path)
 
     part_count = r.read_int32()
+    part_filenames: list[str] = []
     parts: list[_n3cpart.N3CPart] = []
     for _ in range(part_count):
-        part_filename = r.read_string()
-        if part_filename:
-            part_path = resolve_asset_path(path, part_filename)
+        pf = r.read_string()
+        if pf:
+            part_path = resolve_asset_path(path, pf)
             if part_path:
+                part_filenames.append(pf)
                 parts.append(_n3cpart.load(part_path))
 
     plug_count = r.read_int32()
+    plug_filenames: list[str] = []
     plugs: list[_n3cplug.N3CPlug] = []
     for _ in range(plug_count):
-        plug_filename = r.read_string()
-        if plug_filename:
-            plug_path = resolve_asset_path(path, plug_filename)
+        pf = r.read_string()
+        if pf:
+            plug_path = resolve_asset_path(path, pf)
             if plug_path:
+                plug_filenames.append(pf)
                 plugs.append(_n3cplug.load(plug_path))
 
     anim_filename = r.read_string()
@@ -111,27 +127,36 @@ def load(path: Path | str) -> N3Chr:
 
     # Joint animation part boundaries — split upper/lower body animation.
     # Non-zero values indicate the character uses per-part animation blending.
-    # We read and discard these; all joints will be animated together.
-    for _ in range(MAX_CHR_ANI_PART):
-        r.read_int32()
-    for _ in range(MAX_CHR_ANI_PART):
-        r.read_int32()
+    joint_part_starts = [r.read_int32() for _ in range(MAX_CHR_ANI_PART)]
+    joint_part_ends = [r.read_int32() for _ in range(MAX_CHR_ANI_PART)]
 
     # FX plug filename — added 2002-10-10; absent in older files.
+    fx_plug_name = ""
     if r.remaining >= 4:
-        r.read_string()
+        fx_plug_name = r.read_string()
 
     # Collision skin filename — added for v1298; absent in older files.
+    coll_skin_name = ""
     if r.remaining >= 4:
-        r.read_string()
+        coll_skin_name = r.read_string()
 
     return N3Chr(
         name=name,
         pos=pos,
         rot=rot,
         scale=scale,
+        joint_filename=joint_filename,
         joint=joint,
+        part_filenames=part_filenames,
         parts=parts,
+        plug_filenames=plug_filenames,
         plugs=plugs,
+        anim_filename=anim_filename,
         anim_control=anim_control,
+        collision_mesh_filename=coll_mesh,
+        climb_mesh_filename=climb_mesh,
+        joint_part_starts=joint_part_starts,
+        joint_part_ends=joint_part_ends,
+        fx_plug_name=fx_plug_name,
+        collision_skin_name=coll_skin_name,
     )

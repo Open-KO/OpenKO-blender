@@ -39,6 +39,10 @@ class N3CPlug:
     material: Material
     mesh_filename: str      # .n3pmesh or .n3mesh
     tex_filename: str
+    trace_step: int = 0
+    trace_color: int = 0      # D3DCOLOR (uint32)
+    trace0: float = 0.0
+    trace1: float = 0.0
     pmesh: "_n3pmesh.N3PMesh | None" = None
 
 
@@ -73,11 +77,15 @@ def load(path: Path | str) -> N3CPlug:
 
     # CN3CPlug-specific extensions — these fields are absent in older file versions
     trace_step = 0
+    trace_color = 0
+    trace0 = 0.0
+    trace1 = 0.0
     if r.remaining >= 4:
         trace_step = r.read_int32()
         if trace_step > 0:
-            # trace_color (uint32) + trace0 (float) + trace1 (float) = 12 bytes
-            r.skip(12)
+            trace_color = r.read_uint32()  # m_crTrace (D3DCOLOR)
+            trace0 = r.read_float()        # m_fTrace0
+            trace1 = r.read_float()        # m_fTrace1
 
     if r.remaining >= 4:
         use_vmesh = r.read_int32()
@@ -103,5 +111,9 @@ def load(path: Path | str) -> N3CPlug:
         material=material,
         mesh_filename=mesh_filename,
         tex_filename=tex_filename,
+        trace_step=trace_step,
+        trace_color=trace_color,
+        trace0=trace0,
+        trace1=trace1,
         pmesh=pmesh,
     )
