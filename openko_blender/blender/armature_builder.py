@@ -144,6 +144,12 @@ def build_armature(
             _add_bone(child, bone, world_mtx)
 
     _add_bone(root_joint, None, None)
+
+    # Second pass: orient bones toward children and connect the chain.
+    # This makes the skeleton usable for animation in Blender (bones point
+    # along the chain instead of all being Y-up stubs).
+    _orient_bones(armature)
+
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # Store Blender rest matrices and compute per-bone orientation corrections
@@ -239,6 +245,64 @@ def build_animations(
         rig.animation_data.action = first_action
 
     bpy.ops.object.mode_set(mode='OBJECT')
+
+
+# ---------------------------------------------------------------------------
+# Private bone orientation helpers
+# ---------------------------------------------------------------------------
+
+
+def _orient_bones(armature: bpy.types.Armature) -> None:
+    """Orient edit bones toward their children and connect chains.
+
+    Must be called while in EDIT mode.  For each bone:
+      - If it has one child: point tail at the child's head, connect the child.
+      - If it has multiple children: point tail at the average of children's heads.
+      - If it's a leaf (no children): extend along the parent→bone direction,
+        or keep a small Y offset if there's no parent.
+
+    A minimum bone length is enforced so bones remain selectable.
+    """
+    MIN_LENGTH = 0.02
+
+    edit_bones = armature.edit_bones
+
+    for bone in edit_bones:
+        children = [b for b in edit_bones if b.parent == bone]
+
+        if len(children) == 1:
+            # Point directly at the single child and connect it
+            child = children[0]
+            direction = child.head - bone.head
+            if direction.length > MIN_LENGTH:
+                bone.tail = child.head
+                child.use_connect = True
+            else:
+                bone.tail = bone.head + mathutils.Vector([0.0, MIN_LENGTH, 0.0])
+
+        elif len(children) > 1:
+            # Point toward the average of children's heads (don't connect —
+            # multiple children can't all connect to one tail)
+            avg = mathutils.Vector((0.0, 0.0, 0.0))
+            for child in children:
+                avg += child.head
+            avg /= len(children)
+            direction = avg - bone.head
+            if direction.length > MIN_LENGTH:
+                bone.tail = bone.head + direction
+            else:
+                bone.tail = bone.head + mathutils.Vector([0.0, MIN_LENGTH, 0.0])
+
+        else:
+            # Leaf bone: extend along parent→bone direction
+            if bone.parent is not None:
+                direction = bone.head - bone.parent.head
+                if direction.length > MIN_LENGTH:
+                    bone.tail = bone.head + direction.normalized() * min(direction.length * 0.5, 0.1)
+                else:
+                    bone.tail = bone.head + mathutils.Vector([0.0, MIN_LENGTH, 0.0])
+            else:
+                bone.tail = bone.head + mathutils.Vector([0.0, 0.15, 0.0])
 
 
 # ---------------------------------------------------------------------------
