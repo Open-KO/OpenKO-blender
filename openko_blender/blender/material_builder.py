@@ -146,6 +146,17 @@ def create_material(
             if flags & (RenderFlag.ALPHA_BLENDING | RenderFlag.DIFFUSE_ALPHA):
                 links.new(tex_node.outputs["Alpha"], shader.inputs["Alpha"])
 
+    # ── Store KO material metadata as custom properties ─────────────────
+    if ko_material is not None:
+        mat["Ambient"] = [ko_material.ambient.r, ko_material.ambient.g,
+                          ko_material.ambient.b, ko_material.ambient.a]
+        mat["dwColorOp"] = ko_material.color_op
+        mat["dwColorArg1"] = ko_material.color_arg1
+        mat["dwColorArg2"] = ko_material.color_arg2
+        mat["nRenderFlags"] = ko_material.render_flags
+        mat["dwSrcBlend"] = ko_material.src_blend
+        mat["dwDestBlend"] = ko_material.dest_blend
+
     return mat
 
 

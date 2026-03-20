@@ -102,6 +102,9 @@ def build_armature(
 
     data = ArmatureData(rig=rig)
 
+    # Collect per-bone bind-pose data to store as custom properties after edit mode
+    _bind_pose_data: dict[str, dict] = {}
+
     def _add_bone(
         joint: Joint,
         parent_bone: "bpy.types.EditBone | None",
@@ -129,10 +132,24 @@ def build_armature(
         data.joint_id_to_bone_name[id(joint)] = actual_name
         data.dx_bind_bl[actual_name] = dx_to_blender(world_mtx)
 
+        # Save bind-pose local values for export round-trip
+        _bind_pose_data[actual_name] = {
+            "pos": [joint.pos.x, joint.pos.y, joint.pos.z],
+            "rot": [joint.rot.x, joint.rot.y, joint.rot.z, joint.rot.w],
+            "scale": [joint.scale.x, joint.scale.y, joint.scale.z],
+            "dx_bind_bl": [v for row in dx_to_blender(world_mtx) for v in row],
+        }
+
         for child in joint.children:
             _add_bone(child, bone, world_mtx)
 
     _add_bone(root_joint, None, None)
+
+    # Second pass: orient bones toward children and connect the chain.
+    # This makes the skeleton usable for animation in Blender (bones point
+    # along the chain instead of all being Y-up stubs).
+    _orient_bones(armature)
+
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # Store Blender rest matrices and compute per-bone orientation corrections
@@ -141,6 +158,29 @@ def build_armature(
 
     for bname, dx_bind in data.dx_bind_bl.items():
         data.bone_corrections[bname] = data.bone_rest_matrices[bname].inverted() @ dx_bind
+
+    # Persist bind-pose and correction data as bone custom properties for export
+    for bone in armature.bones:
+        bp = _bind_pose_data.get(bone.name)
+        if bp:
+            bone["bind_pos"] = bp["pos"]
+            bone["bind_rot"] = bp["rot"]
+            bone["bind_scale"] = bp["scale"]
+            bone["dx_bind_bl"] = bp["dx_bind_bl"]
+
+    # Store the key sampling rate on the armature for export.
+    # Find the first joint with animation keys and use its rate.
+    def _find_sampling_rate(joint: Joint) -> float:
+        for key in (joint.key_pos, joint.key_rot, joint.key_scale):
+            if key.count > 0:
+                return key.sampling_rate
+        for child in joint.children:
+            rate = _find_sampling_rate(child)
+            if rate != 30.0:
+                return rate
+        return 30.0
+
+    rig["key_sampling_rate"] = _find_sampling_rate(root_joint)
 
     return data
 
@@ -177,6 +217,23 @@ def build_animations(
         if first_action is None:
             first_action = action
 
+        # Store animation metadata as custom properties on the Action.
+        # iAnimIndex preserves the original ordering (the game references by index).
+        # szAnimName preserves the original name (Blender may append .001 for dupes).
+        action["iAnimIndex"] = i
+        action["szAnimName"] = anim_data.name
+        action["fFrmStart"] = anim_data.frm_start
+        action["fFrmEnd"] = anim_data.frm_end
+        action["fFrmPerSec"] = anim_data.frm_per_sec
+        action["fFrmPlugTraceStart"] = anim_data.frm_plug_trace_start
+        action["fFrmPlugTraceEnd"] = anim_data.frm_plug_trace_end
+        action["fFrmSound0"] = anim_data.frm_sound_0
+        action["fFrmSound1"] = anim_data.frm_sound_1
+        action["fFrmStrike0"] = anim_data.frm_strike_0
+        action["fFrmStrike1"] = anim_data.frm_strike_1
+        action["fTimeBlend"] = anim_data.time_blend
+        action["iBlendFlags"] = anim_data.blend_flags
+
         frame = 1
         fFrm = anim_data.frm_start
         while fFrm <= anim_data.frm_end:
@@ -188,6 +245,64 @@ def build_animations(
         rig.animation_data.action = first_action
 
     bpy.ops.object.mode_set(mode='OBJECT')
+
+
+# ---------------------------------------------------------------------------
+# Private bone orientation helpers
+# ---------------------------------------------------------------------------
+
+
+def _orient_bones(armature: bpy.types.Armature) -> None:
+    """Orient edit bones toward their children and connect chains.
+
+    Must be called while in EDIT mode.  For each bone:
+      - If it has one child: point tail at the child's head, connect the child.
+      - If it has multiple children: point tail at the average of children's heads.
+      - If it's a leaf (no children): extend along the parent→bone direction,
+        or keep a small Y offset if there's no parent.
+
+    A minimum bone length is enforced so bones remain selectable.
+    """
+    MIN_LENGTH = 0.02
+
+    edit_bones = armature.edit_bones
+
+    for bone in edit_bones:
+        children = [b for b in edit_bones if b.parent == bone]
+
+        if len(children) == 1:
+            # Point directly at the single child and connect it
+            child = children[0]
+            direction = child.head - bone.head
+            if direction.length > MIN_LENGTH:
+                bone.tail = child.head
+                child.use_connect = True
+            else:
+                bone.tail = bone.head + mathutils.Vector([0.0, MIN_LENGTH, 0.0])
+
+        elif len(children) > 1:
+            # Point toward the average of children's heads (don't connect —
+            # multiple children can't all connect to one tail)
+            avg = mathutils.Vector((0.0, 0.0, 0.0))
+            for child in children:
+                avg += child.head
+            avg /= len(children)
+            direction = avg - bone.head
+            if direction.length > MIN_LENGTH:
+                bone.tail = bone.head + direction
+            else:
+                bone.tail = bone.head + mathutils.Vector([0.0, MIN_LENGTH, 0.0])
+
+        else:
+            # Leaf bone: extend along parent→bone direction
+            if bone.parent is not None:
+                direction = bone.head - bone.parent.head
+                if direction.length > MIN_LENGTH:
+                    bone.tail = bone.head + direction.normalized() * min(direction.length * 0.5, 0.1)
+                else:
+                    bone.tail = bone.head + mathutils.Vector([0.0, MIN_LENGTH, 0.0])
+            else:
+                bone.tail = bone.head + mathutils.Vector([0.0, 0.15, 0.0])
 
 
 # ---------------------------------------------------------------------------

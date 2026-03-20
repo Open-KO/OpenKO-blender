@@ -23,9 +23,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ._base import read_material, read_name, resolve_asset_path
+from ._write import write_material, write_name
 from .structs import Material, PlugType, Vector3
 from . import n3pmesh as _n3pmesh
 from ..utils.binary_reader import BinaryReader
+from ..utils.binary_writer import BinaryWriter
 
 
 @dataclass
@@ -39,6 +41,10 @@ class N3CPlug:
     material: Material
     mesh_filename: str      # .n3pmesh or .n3mesh
     tex_filename: str
+    trace_step: int = 0
+    trace_color: int = 0      # D3DCOLOR (uint32)
+    trace0: float = 0.0
+    trace1: float = 0.0
     pmesh: "_n3pmesh.N3PMesh | None" = None
 
 
@@ -73,11 +79,15 @@ def load(path: Path | str) -> N3CPlug:
 
     # CN3CPlug-specific extensions — these fields are absent in older file versions
     trace_step = 0
+    trace_color = 0
+    trace0 = 0.0
+    trace1 = 0.0
     if r.remaining >= 4:
         trace_step = r.read_int32()
         if trace_step > 0:
-            # trace_color (uint32) + trace0 (float) + trace1 (float) = 12 bytes
-            r.skip(12)
+            trace_color = r.read_uint32()  # m_crTrace (D3DCOLOR)
+            trace0 = r.read_float()        # m_fTrace0
+            trace1 = r.read_float()        # m_fTrace1
 
     if r.remaining >= 4:
         use_vmesh = r.read_int32()
@@ -103,5 +113,39 @@ def load(path: Path | str) -> N3CPlug:
         material=material,
         mesh_filename=mesh_filename,
         tex_filename=tex_filename,
+        trace_step=trace_step,
+        trace_color=trace_color,
+        trace0=trace0,
+        trace1=trace1,
         pmesh=pmesh,
     )
+
+
+# ── Save ─────────────────────────────────────────────────────────────────────
+
+
+def save(plug: N3CPlug, path: Path | str) -> None:
+    """Write an N3CPlug to a .n3cplug file."""
+    w = BinaryWriter()
+
+    write_name(w, plug.name)
+    w.write_uint32(int(plug.plug_type))
+    w.write_int32(plug.joint_index)
+    w.write_vector3(plug.position.x, plug.position.y, plug.position.z)
+    w.write_matrix44(plug.rot_matrix)
+    w.write_vector3(plug.scale.x, plug.scale.y, plug.scale.z)
+    write_material(w, plug.material)
+    w.write_string(plug.mesh_filename)
+    w.write_string(plug.tex_filename)
+
+    # Trace data
+    w.write_int32(plug.trace_step)
+    if plug.trace_step > 0:
+        w.write_uint32(plug.trace_color)
+        w.write_float(plug.trace0)
+        w.write_float(plug.trace1)
+
+    # VirtualMesh flag — always 0 (not supported)
+    w.write_int32(0)
+
+    w.to_file(path)

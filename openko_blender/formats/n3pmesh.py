@@ -26,8 +26,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ._base import read_name
+from ._write import write_name
 from .structs import LODCtrlValue, UV, Vector3
 from ..utils.binary_reader import BinaryReader
+from ..utils.binary_writer import BinaryWriter
 
 
 @dataclass
@@ -99,3 +101,36 @@ def load(path: Path | str) -> N3PMesh:
         min_num_vertices=min_num_vertices,
         min_num_indices=min_num_indices,
     )
+
+
+def save(pmesh: N3PMesh, path: Path | str) -> None:
+    """Write an N3PMesh to a .n3pmesh file (single-LOD, no collapse data)."""
+    w = BinaryWriter()
+
+    write_name(w, pmesh.name)
+
+    num_verts = len(pmesh.vertices)
+    num_indices = len(pmesh.indices)
+
+    # No collapse data for single-LOD export
+    w.write_int32(0)            # num_collapses
+    w.write_int32(0)            # total_index_changes
+    w.write_int32(num_verts)    # max_num_vertices
+    w.write_int32(num_indices)  # max_num_indices
+    w.write_int32(num_verts)    # min_num_vertices (= max for single LOD)
+    w.write_int32(num_indices)  # min_num_indices  (= max for single LOD)
+
+    for v in pmesh.vertices:
+        w.write_vertex_with_uv(
+            (v.pos.x, v.pos.y, v.pos.z),
+            (v.normal.x, v.normal.y, v.normal.z),
+            (v.uv.u, v.uv.v),
+        )
+
+    for idx in pmesh.indices:
+        w.write_uint16(idx)
+
+    # No collapse data, no index changes
+    w.write_int32(0)  # lod_ctrl_value_count
+
+    w.to_file(path)

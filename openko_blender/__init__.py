@@ -56,17 +56,23 @@ def register() -> None:
     # in a plain Python environment (e.g. pytest) without bpy being present.
     import bpy
     from .operators.import_ops import IMPORT_OT_ko_asset, menu_func_import
+    from .operators.export_ops import EXPORT_OT_ko_asset, menu_func_export
 
     bpy.utils.register_class(IMPORT_OT_ko_asset)
+    bpy.utils.register_class(EXPORT_OT_ko_asset)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
+    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
     bpy.app.handlers.depsgraph_update_post.append(_sync_frame_range_to_action)
 
 
 def unregister() -> None:
     import bpy
     from .operators.import_ops import IMPORT_OT_ko_asset, menu_func_import
+    from .operators.export_ops import EXPORT_OT_ko_asset, menu_func_export
 
     if _sync_frame_range_to_action in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_sync_frame_range_to_action)
+    bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+    bpy.utils.unregister_class(EXPORT_OT_ko_asset)
     bpy.utils.unregister_class(IMPORT_OT_ko_asset)

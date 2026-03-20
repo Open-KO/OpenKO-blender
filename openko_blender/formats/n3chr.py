@@ -32,12 +32,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ._base import read_anim_key, read_name, resolve_asset_path
+from ._write import write_empty_anim_key, write_name
 from .structs import Quaternion, Vector3
 from . import n3anim as _n3anim
 from . import n3cpart as _n3cpart
 from . import n3cplug as _n3cplug
 from . import n3joint as _n3joint
 from ..utils.binary_reader import BinaryReader
+from ..utils.binary_writer import BinaryWriter
 
 MAX_CHR_ANI_PART = 2
 
@@ -48,10 +50,22 @@ class N3Chr:
     pos: Vector3
     rot: Quaternion
     scale: Vector3
+    joint_filename: str = ""
     joint: "_n3joint.Joint | None" = None
+    part_filenames: list[str] = field(default_factory=list)
     parts: "list[_n3cpart.N3CPart]" = field(default_factory=list)
+    plug_filenames: list[str] = field(default_factory=list)
     plugs: "list[_n3cplug.N3CPlug]" = field(default_factory=list)
+    anim_filename: str = ""
     anim_control: "_n3anim.N3AnimControl | None" = None
+    # CN3TransformCollision
+    collision_mesh_filename: str = ""
+    climb_mesh_filename: str = ""
+    # CN3Chr metadata
+    joint_part_starts: list[int] = field(default_factory=list)
+    joint_part_ends: list[int] = field(default_factory=list)
+    fx_plug_name: str = ""
+    collision_skin_name: str = ""
 
 
 def load(path: Path | str) -> N3Chr:
@@ -73,8 +87,8 @@ def load(path: Path | str) -> N3Chr:
     # ── CN3TransformCollision ──────────────────────────────────────────────
     # CN3TransformCollision::Load() reads two length-prefixed mesh filenames
     # (collision mesh + climb mesh). Both are almost always empty strings.
-    _coll_mesh = r.read_string()
-    _climb_mesh = r.read_string()
+    coll_mesh = r.read_string()
+    climb_mesh = r.read_string()
 
     # ── CN3Chr ────────────────────────────────────────────────────────────
     joint_filename = r.read_string()
@@ -85,21 +99,25 @@ def load(path: Path | str) -> N3Chr:
             joint = _n3joint.load(joint_path)
 
     part_count = r.read_int32()
+    part_filenames: list[str] = []
     parts: list[_n3cpart.N3CPart] = []
     for _ in range(part_count):
-        part_filename = r.read_string()
-        if part_filename:
-            part_path = resolve_asset_path(path, part_filename)
+        pf = r.read_string()
+        if pf:
+            part_path = resolve_asset_path(path, pf)
             if part_path:
+                part_filenames.append(pf)
                 parts.append(_n3cpart.load(part_path))
 
     plug_count = r.read_int32()
+    plug_filenames: list[str] = []
     plugs: list[_n3cplug.N3CPlug] = []
     for _ in range(plug_count):
-        plug_filename = r.read_string()
-        if plug_filename:
-            plug_path = resolve_asset_path(path, plug_filename)
+        pf = r.read_string()
+        if pf:
+            plug_path = resolve_asset_path(path, pf)
             if plug_path:
+                plug_filenames.append(pf)
                 plugs.append(_n3cplug.load(plug_path))
 
     anim_filename = r.read_string()
@@ -111,27 +129,85 @@ def load(path: Path | str) -> N3Chr:
 
     # Joint animation part boundaries — split upper/lower body animation.
     # Non-zero values indicate the character uses per-part animation blending.
-    # We read and discard these; all joints will be animated together.
-    for _ in range(MAX_CHR_ANI_PART):
-        r.read_int32()
-    for _ in range(MAX_CHR_ANI_PART):
-        r.read_int32()
+    joint_part_starts = [r.read_int32() for _ in range(MAX_CHR_ANI_PART)]
+    joint_part_ends = [r.read_int32() for _ in range(MAX_CHR_ANI_PART)]
 
     # FX plug filename — added 2002-10-10; absent in older files.
+    fx_plug_name = ""
     if r.remaining >= 4:
-        r.read_string()
+        fx_plug_name = r.read_string()
 
     # Collision skin filename — added for v1298; absent in older files.
+    coll_skin_name = ""
     if r.remaining >= 4:
-        r.read_string()
+        coll_skin_name = r.read_string()
 
     return N3Chr(
         name=name,
         pos=pos,
         rot=rot,
         scale=scale,
+        joint_filename=joint_filename,
         joint=joint,
+        part_filenames=part_filenames,
         parts=parts,
+        plug_filenames=plug_filenames,
         plugs=plugs,
+        anim_filename=anim_filename,
         anim_control=anim_control,
+        collision_mesh_filename=coll_mesh,
+        climb_mesh_filename=climb_mesh,
+        joint_part_starts=joint_part_starts,
+        joint_part_ends=joint_part_ends,
+        fx_plug_name=fx_plug_name,
+        collision_skin_name=coll_skin_name,
     )
+
+
+# ── Save ─────────────────────────────────────────────────────────────────────
+
+
+def save(chr_data: N3Chr, path: Path | str) -> None:
+    """Write an N3Chr to a .n3chr file.
+
+    Only writes the character root file with filename references to sub-files.
+    Sub-files (.n3joint, .n3cpart, .n3cplug, .n3anim) must be written
+    separately using their respective save functions.
+    """
+    w = BinaryWriter()
+
+    write_name(w, chr_data.name)
+    w.write_vector3(chr_data.pos.x, chr_data.pos.y, chr_data.pos.z)
+    w.write_quaternion(chr_data.rot.x, chr_data.rot.y, chr_data.rot.z, chr_data.rot.w)
+    w.write_vector3(chr_data.scale.x, chr_data.scale.y, chr_data.scale.z)
+    # Bind-pose animation keys — always empty for characters
+    write_empty_anim_key(w)
+    write_empty_anim_key(w)
+    write_empty_anim_key(w)
+
+    w.write_string(chr_data.collision_mesh_filename)
+    w.write_string(chr_data.climb_mesh_filename)
+
+    w.write_string(chr_data.joint_filename)
+
+    w.write_int32(len(chr_data.part_filenames))
+    for pf in chr_data.part_filenames:
+        w.write_string(pf)
+
+    w.write_int32(len(chr_data.plug_filenames))
+    for pf in chr_data.plug_filenames:
+        w.write_string(pf)
+
+    w.write_string(chr_data.anim_filename)
+
+    for i in range(MAX_CHR_ANI_PART):
+        v = chr_data.joint_part_starts[i] if i < len(chr_data.joint_part_starts) else 0
+        w.write_int32(v)
+    for i in range(MAX_CHR_ANI_PART):
+        v = chr_data.joint_part_ends[i] if i < len(chr_data.joint_part_ends) else 0
+        w.write_int32(v)
+
+    w.write_string(chr_data.fx_plug_name)
+    w.write_string(chr_data.collision_skin_name)
+
+    w.to_file(path)
