@@ -417,8 +417,11 @@ def _export_n3joint(col: bpy.types.Collection, export_dir: Path) -> int:
 
     root_joint = _armature_to_joints(rig)
 
-    # Re-sample animation keys from Blender Actions into the Joint hierarchy
-    _resample_animation_keys(rig, root_joint)
+    # Re-sample animation keys from Blender Actions into the Joint hierarchy.
+    # Sampling rate comes from the collection (user-editable), falling back to
+    # the armature property, then defaulting to 30.0.
+    sampling_rate = col.get("fKeySamplingRate", rig.get("key_sampling_rate", 30.0))
+    _resample_animation_keys(rig, root_joint, sampling_rate)
 
     save(root_joint, joint_path)
     count += 1
@@ -499,15 +502,18 @@ def _armature_to_joints(rig: bpy.types.Object) -> "Joint":
     )
 
 
-def _resample_animation_keys(rig: bpy.types.Object, root_joint: "Joint") -> None:
+def _resample_animation_keys(
+    rig: bpy.types.Object, root_joint: "Joint", sampling_rate: float = 30.0,
+) -> None:
     """Re-sample Blender Actions back into KO AnimKey arrays on the Joint tree.
 
     For each Action (animation clip), evaluates the pose at each frame,
-    reverses the DX↔Blender correction math, decomposes to local pos/rot/scale,
+    reverses the DX<->Blender correction math, decomposes to local pos/rot/scale,
     and stores the results in the Joint's key_pos/key_rot/key_scale arrays.
 
-    The KO engine indexes keys by source frame number (from fFrmStart to fFrmEnd),
-    so the key arrays must cover the full range across all clips.
+    The KO engine indexes keys by source frame number (from fFrmStart to fFrmEnd).
+    Keys are sampled at *sampling_rate* (e.g., 15.0 means 15 keys per 30 source frames).
+    Channels that don't animate (all values match bind pose) are left as count=0.
     """
     import mathutils
     from ..formats.structs import AnimKey, AnimKeyType, Quaternion, Vector3
@@ -520,7 +526,6 @@ def _resample_animation_keys(rig: bpy.types.Object, root_joint: "Joint") -> None
     if not actions:
         return
 
-    # Determine total frame range across all clips
     max_ko_frame = 0
     for action in actions:
         end = int(action.get("fFrmEnd", 0))
@@ -530,7 +535,10 @@ def _resample_animation_keys(rig: bpy.types.Object, root_joint: "Joint") -> None
     if max_ko_frame <= 0:
         return
 
-    total_keys = max_ko_frame + 1  # frames 0..max_ko_frame
+    # Key count is based on sampling rate:
+    # index = int(frame * (sampling_rate / 30.0))
+    # So for max_ko_frame at rate R, we need int(max_ko_frame * R/30) + 1 keys
+    total_keys = int(max_ko_frame * (sampling_rate / 30.0)) + 1
 
     # Build flat bone list matching Joint tree (depth-first)
     all_joints = root_joint.flat_list()
@@ -548,8 +556,7 @@ def _resample_animation_keys(rig: bpy.types.Object, root_joint: "Joint") -> None
     if not corrections:
         return  # No stored correction data — can't reconstruct keys
 
-    # Initialize per-bone key arrays
-    # pos_keys[bone_name][ko_frame] = Vector3
+    # Initialize per-bone key arrays indexed by key_index (not ko_frame)
     pos_keys: dict[str, list] = {name: [None] * total_keys for name in bone_names}
     rot_keys: dict[str, list] = {name: [None] * total_keys for name in bone_names}
     scale_keys: dict[str, list] = {name: [None] * total_keys for name in bone_names}
@@ -559,7 +566,6 @@ def _resample_animation_keys(rig: bpy.types.Object, root_joint: "Joint") -> None
     original_frame = bpy.context.scene.frame_current
     was_hidden = rig.hide_get()
 
-    # Ensure armature is visible and active (required for mode_set)
     if was_hidden:
         rig.hide_set(False)
     bpy.context.view_layer.objects.active = rig
@@ -575,7 +581,9 @@ def _resample_animation_keys(rig: bpy.types.Object, root_joint: "Joint") -> None
             bl_frame = frame_offset + 1  # Blender frames start at 1
             ko_frame = ko_start + frame_offset
 
-            if ko_frame >= total_keys:
+            # Map ko_frame to key index using the sampling rate
+            key_index = int(ko_frame * (sampling_rate / 30.0))
+            if key_index >= total_keys:
                 break
 
             bpy.context.scene.frame_set(bl_frame)
@@ -590,9 +598,6 @@ def _resample_animation_keys(rig: bpy.types.Object, root_joint: "Joint") -> None
                 bone = armature.bones[pb.name]
                 bone_rest = bone.matrix_local
 
-                # Reconstruct desired_pose from matrix_basis
-                # Import: matrix_basis = bone_rest.inv @ desired_pose (root)
-                #         matrix_basis = rest_offset.inv @ parent_bl_pose.inv @ desired_pose (child)
                 if pb.parent is not None:
                     parent_bone_rest = armature.bones[pb.parent.name].matrix_local
                     rest_offset = parent_bone_rest.inverted() @ bone_rest
@@ -601,11 +606,8 @@ def _resample_animation_keys(rig: bpy.types.Object, root_joint: "Joint") -> None
                 else:
                     desired_pose = bone_rest @ pb.matrix_basis
 
-                # Reverse correction: dx_anim_bl = desired_pose @ correction
                 correction = corrections[pb.name]
                 dx_anim_bl = desired_pose @ correction
-
-                # Reverse coordinate conversion: dx_world = MAP_MTX_INV @ dx_anim_bl @ MAP_MTX
                 dx_world = MAP_MTX_INV @ dx_anim_bl @ MAP_MTX
                 dx_worlds[pb.name] = dx_world
 
@@ -626,10 +628,9 @@ def _resample_animation_keys(rig: bpy.types.Object, root_joint: "Joint") -> None
                 rot_q = dx_local.to_quaternion()
                 sca = dx_local.to_scale()
 
-                pos_keys[pb.name][ko_frame] = Vector3(loc.x, loc.y, loc.z)
-                # KO quaternion order: x, y, z, w
-                rot_keys[pb.name][ko_frame] = Quaternion(rot_q.x, rot_q.y, rot_q.z, rot_q.w)
-                scale_keys[pb.name][ko_frame] = Vector3(sca.x, sca.y, sca.z)
+                pos_keys[pb.name][key_index] = Vector3(loc.x, loc.y, loc.z)
+                rot_keys[pb.name][key_index] = Quaternion(rot_q.x, rot_q.y, rot_q.z, rot_q.w)
+                scale_keys[pb.name][key_index] = Vector3(sca.x, sca.y, sca.z)
 
     # Restore state
     bpy.ops.object.mode_set(mode='OBJECT')
@@ -638,38 +639,61 @@ def _resample_animation_keys(rig: bpy.types.Object, root_joint: "Joint") -> None
     if was_hidden:
         rig.hide_set(True)
 
-    # Build AnimKey structures on each Joint
+    # Build AnimKey structures on each Joint.
+    # Only emit keys for channels that actually animate (skip if all values
+    # match the bind pose within tolerance).
+    def _is_static_v3(keys: list, default: Vector3, tol: float = 1e-4) -> bool:
+        return all(
+            k is None or (abs(k.x - default.x) < tol and abs(k.y - default.y) < tol and abs(k.z - default.z) < tol)
+            for k in keys
+        )
+
+    def _is_static_q(keys: list, default: Quaternion, tol: float = 1e-4) -> bool:
+        return all(
+            k is None or (abs(k.x - default.x) < tol and abs(k.y - default.y) < tol
+                          and abs(k.z - default.z) < tol and abs(k.w - default.w) < tol)
+            for k in keys
+        )
+
     for joint in all_joints:
         pk = pos_keys.get(joint.name)
         rk = rot_keys.get(joint.name)
         sk = scale_keys.get(joint.name)
 
-        if pk and any(v is not None for v in pk):
-            # Fill gaps with bind-pose defaults
-            for i in range(total_keys):
-                if pk[i] is None:
-                    pk[i] = joint.pos
-                if rk[i] is None:
-                    rk[i] = joint.rot
-                if sk[i] is None:
-                    sk[i] = joint.scale
+        if pk is None or not any(v is not None for v in pk):
+            continue
 
+        # Fill gaps with bind-pose defaults
+        for i in range(total_keys):
+            if pk[i] is None:
+                pk[i] = joint.pos
+            if rk[i] is None:
+                rk[i] = joint.rot
+            if sk[i] is None:
+                sk[i] = joint.scale
+
+        # Only emit keys for channels that actually change
+        if not _is_static_v3(pk, joint.pos):
             joint.key_pos = AnimKey(
                 count=total_keys,
                 key_type=AnimKeyType.VECTOR3,
-                sampling_rate=30.0,
-                data=pk + [pk[-1]],  # duplicate last for interpolation safety
+                sampling_rate=sampling_rate,
+                data=pk + [pk[-1]],
             )
+
+        if not _is_static_q(rk, joint.rot):
             joint.key_rot = AnimKey(
                 count=total_keys,
                 key_type=AnimKeyType.QUATERNION,
-                sampling_rate=30.0,
+                sampling_rate=sampling_rate,
                 data=rk + [rk[-1]],
             )
+
+        if not _is_static_v3(sk, joint.scale):
             joint.key_scale = AnimKey(
                 count=total_keys,
                 key_type=AnimKeyType.VECTOR3,
-                sampling_rate=30.0,
+                sampling_rate=sampling_rate,
                 data=sk + [sk[-1]],
             )
 
@@ -681,19 +705,20 @@ def _export_anims_from_armature(
     from ..formats.n3anim import AnimData, N3AnimControl, save
     from pathlib import PurePosixPath
 
-    # Collect all actions that have been used with this armature
+    # Collect all actions that have KO metadata, sorted by original index
+    # to preserve the game's animation ordering (game references by index).
+    ko_actions = [a for a in bpy.data.actions if "fFrmStart" in a]
+    ko_actions.sort(key=lambda a: a.get("iAnimIndex", 999))
+
     animations: list[AnimData] = []
+    for action in ko_actions:
+        # Use stored original name (before Blender's .001 suffix for duplicates)
+        anim_name = action.get("szAnimName", action.name)
 
-    for action in bpy.data.actions:
-        # Check if this action has our custom properties (was imported from KO)
-        if "fFrmStart" not in action:
-            continue
-
-        start, end = action.frame_range
         animations.append(AnimData(
-            name=action.name,
-            frm_start=action.get("fFrmStart", start),
-            frm_end=action.get("fFrmEnd", end),
+            name=anim_name,
+            frm_start=action.get("fFrmStart", 0.0),
+            frm_end=action.get("fFrmEnd", 0.0),
             frm_per_sec=action.get("fFrmPerSec", 30.0),
             frm_plug_trace_start=action.get("fFrmPlugTraceStart", 0.0),
             frm_plug_trace_end=action.get("fFrmPlugTraceEnd", 0.0),

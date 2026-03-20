@@ -203,6 +203,9 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
         if scale != 1.0:
             arm_data.rig.scale = (scale, scale, scale)
 
+        # Store key sampling rate on the collection (visible/editable by user)
+        joint_col["fKeySamplingRate"] = arm_data.rig.get("key_sampling_rate", 30.0)
+
     # ── Skinned parts (.n3cpart each) ─────────────────────────────────────────
     for part, part_filename in zip(chr_data.parts, chr_data.part_filenames):
         skin = _pick_lod(part.skins, lod)

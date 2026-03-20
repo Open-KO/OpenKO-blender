@@ -162,6 +162,20 @@ def build_armature(
             bone["bind_scale"] = bp["scale"]
             bone["dx_bind_bl"] = bp["dx_bind_bl"]
 
+    # Store the key sampling rate on the armature for export.
+    # Find the first joint with animation keys and use its rate.
+    def _find_sampling_rate(joint: Joint) -> float:
+        for key in (joint.key_pos, joint.key_rot, joint.key_scale):
+            if key.count > 0:
+                return key.sampling_rate
+        for child in joint.children:
+            rate = _find_sampling_rate(child)
+            if rate != 30.0:
+                return rate
+        return 30.0
+
+    rig["key_sampling_rate"] = _find_sampling_rate(root_joint)
+
     return data
 
 
@@ -197,7 +211,11 @@ def build_animations(
         if first_action is None:
             first_action = action
 
-        # Store animation metadata as custom properties on the Action
+        # Store animation metadata as custom properties on the Action.
+        # iAnimIndex preserves the original ordering (the game references by index).
+        # szAnimName preserves the original name (Blender may append .001 for dupes).
+        action["iAnimIndex"] = i
+        action["szAnimName"] = anim_data.name
         action["fFrmStart"] = anim_data.frm_start
         action["fFrmEnd"] = anim_data.frm_end
         action["fFrmPerSec"] = anim_data.frm_per_sec
