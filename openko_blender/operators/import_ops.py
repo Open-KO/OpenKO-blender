@@ -114,12 +114,13 @@ class IMPORT_OT_ko_asset(Operator, ImportHelper):
             from .. import _sync_frame_range_to_action
             _sync_frame_range_to_action(context.scene, None)
 
-            # Hide armatures and the default light from the viewport
+            # Hide armatures and the default light in the 3D view (eye icon),
+            # NOT hide_viewport which blocks operators like mode_set.
             for obj in context.scene.objects:
                 if obj.type == 'ARMATURE':
-                    obj.hide_viewport = True
+                    obj.hide_set(True)
                 elif obj.name == 'KO_DefaultLight':
-                    obj.hide_viewport = True
+                    obj.hide_set(True)
 
             for area in context.screen.areas:
                 if area.type == 'VIEW_3D':
@@ -190,6 +191,7 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
         chr_col.children.link(joint_col)
         joint_col["ExportFilename"] = joint_stem
         joint_col["ExportFileType"] = ".n3joint"
+        joint_col["ExportPath"] = chr_data.joint_filename
 
         # Animation reference lives on the joint collection
         if chr_data.anim_filename:
@@ -212,6 +214,7 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
         chr_col.children.link(part_col)
         part_col["ExportFilename"] = part_stem
         part_col["ExportFileType"] = ".n3cpart"
+        part_col["ExportPath"] = part_filename
 
         obj_name = skin.name or part.name or filepath.stem
         obj = mesh_builder.build_skinned_mesh(skin, obj_name)
@@ -226,6 +229,11 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
 
         # Part metadata
         obj["m_dwReserved"] = part.version
+        obj["szPartName"] = part.name
+        if part.tex_filename:
+            obj["szTexFilename"] = part.tex_filename
+        if part.skins_filename:
+            obj["szSkinsFilename"] = part.skins_filename
 
         if not skip_textures and part.tex_filename:
             image = material_builder.resolve_and_load_texture(
@@ -247,6 +255,7 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
         chr_col.children.link(plug_col)
         plug_col["ExportFilename"] = plug_stem
         plug_col["ExportFileType"] = ".n3cplug"
+        plug_col["ExportPath"] = plug_filename
 
         obj_name = plug.name or filepath.stem
         obj = mesh_builder.build_static_mesh(plug.pmesh, obj_name)
@@ -261,6 +270,8 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
         obj["m_crTrace"] = plug.trace_color
         obj["m_fTrace0"] = plug.trace0
         obj["m_fTrace1"] = plug.trace1
+        if plug.tex_filename:
+            obj["szTexFilename"] = plug.tex_filename
 
         if not skip_textures and plug.tex_filename:
             image = material_builder.resolve_and_load_texture(

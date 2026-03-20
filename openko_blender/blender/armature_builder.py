@@ -102,6 +102,9 @@ def build_armature(
 
     data = ArmatureData(rig=rig)
 
+    # Collect per-bone bind-pose data to store as custom properties after edit mode
+    _bind_pose_data: dict[str, dict] = {}
+
     def _add_bone(
         joint: Joint,
         parent_bone: "bpy.types.EditBone | None",
@@ -129,6 +132,14 @@ def build_armature(
         data.joint_id_to_bone_name[id(joint)] = actual_name
         data.dx_bind_bl[actual_name] = dx_to_blender(world_mtx)
 
+        # Save bind-pose local values for export round-trip
+        _bind_pose_data[actual_name] = {
+            "pos": [joint.pos.x, joint.pos.y, joint.pos.z],
+            "rot": [joint.rot.x, joint.rot.y, joint.rot.z, joint.rot.w],
+            "scale": [joint.scale.x, joint.scale.y, joint.scale.z],
+            "dx_bind_bl": [v for row in dx_to_blender(world_mtx) for v in row],
+        }
+
         for child in joint.children:
             _add_bone(child, bone, world_mtx)
 
@@ -141,6 +152,15 @@ def build_armature(
 
     for bname, dx_bind in data.dx_bind_bl.items():
         data.bone_corrections[bname] = data.bone_rest_matrices[bname].inverted() @ dx_bind
+
+    # Persist bind-pose and correction data as bone custom properties for export
+    for bone in armature.bones:
+        bp = _bind_pose_data.get(bone.name)
+        if bp:
+            bone["bind_pos"] = bp["pos"]
+            bone["bind_rot"] = bp["rot"]
+            bone["bind_scale"] = bp["scale"]
+            bone["dx_bind_bl"] = bp["dx_bind_bl"]
 
     return data
 
@@ -178,6 +198,9 @@ def build_animations(
             first_action = action
 
         # Store animation metadata as custom properties on the Action
+        action["fFrmStart"] = anim_data.frm_start
+        action["fFrmEnd"] = anim_data.frm_end
+        action["fFrmPerSec"] = anim_data.frm_per_sec
         action["fFrmPlugTraceStart"] = anim_data.frm_plug_trace_start
         action["fFrmPlugTraceEnd"] = anim_data.frm_plug_trace_end
         action["fFrmSound0"] = anim_data.frm_sound_0
