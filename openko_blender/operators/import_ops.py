@@ -43,13 +43,6 @@ class IMPORT_OT_ko_asset(Operator, ImportHelper):
         maxlen=255,
     )
 
-    lod_level: IntProperty(
-        name="LOD Level",
-        description="Level of detail to import (0 = highest quality)",
-        default=0,
-        min=0,
-        max=3,
-    )
     scale: FloatProperty(
         name="Scale",
         description="Global scale factor applied to the imported asset",
@@ -80,7 +73,6 @@ class IMPORT_OT_ko_asset(Operator, ImportHelper):
         kwargs = dict(
             context=context,
             filepath=filepath,
-            lod=self.lod_level,
             scale=self.scale,
             skip_textures=self.skip_textures,
             skip_animations=self.skip_animations,
@@ -131,7 +123,6 @@ class IMPORT_OT_ko_asset(Operator, ImportHelper):
 
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "lod_level")
         layout.prop(self, "scale")
         layout.prop(self, "skip_textures")
         layout.prop(self, "skip_animations")
@@ -156,7 +147,7 @@ def menu_func_import(self, context):
 # ---------------------------------------------------------------------------
 
 
-def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations):
+def _import_n3chr(context, filepath, scale, skip_textures, skip_animations):
     """Import a full character: armature + skinned parts + plugs + all animations.
 
     Each referenced sub-file (.n3joint, .n3cpart, .n3cplug) gets its own child
@@ -208,7 +199,7 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
 
     # ── Skinned parts (.n3cpart each) ─────────────────────────────────────────
     for part, part_filename in zip(chr_data.parts, chr_data.part_filenames):
-        skin = _pick_lod(part.skins, lod)
+        skin = _pick_best_lod(part.skins)
         if skin is None:
             continue
 
@@ -301,7 +292,7 @@ def _import_n3chr(context, filepath, lod, scale, skip_textures, skip_animations)
     return {'FINISHED'}
 
 
-def _import_n3shape(context, filepath, lod, scale, skip_textures, skip_animations):
+def _import_n3shape(context, filepath, scale, skip_textures, skip_animations):
     """Import a static shape / prop: one or more N3PMesh parts."""
     from ..formats import n3shape as _n3shape
     from ..blender import material_builder, mesh_builder
@@ -349,13 +340,13 @@ def _import_n3shape(context, filepath, lod, scale, skip_textures, skip_animation
     return {'FINISHED'}
 
 
-def _import_n3cpart(context, filepath, lod, scale, skip_textures, skip_animations):
+def _import_n3cpart(context, filepath, scale, skip_textures, skip_animations):
     """Import a standalone character part (skinned mesh, no skeleton)."""
     from ..formats import n3cpart as _n3cpart
     from ..blender import material_builder, mesh_builder
 
     part = _n3cpart.load(filepath)
-    skin = _pick_lod(part.skins, lod)
+    skin = _pick_best_lod(part.skins)
     if skin is None:
         return {'CANCELLED'}
 
@@ -386,7 +377,7 @@ def _import_n3cpart(context, filepath, lod, scale, skip_textures, skip_animation
     return {'FINISHED'}
 
 
-def _import_n3cplug(context, filepath, lod, scale, skip_textures, skip_animations):
+def _import_n3cplug(context, filepath, scale, skip_textures, skip_animations):
     """Import a standalone plug/weapon mesh."""
     from ..formats import n3cplug as _n3cplug
     from ..blender import material_builder, mesh_builder
@@ -426,7 +417,7 @@ def _import_n3cplug(context, filepath, lod, scale, skip_textures, skip_animation
     return {'FINISHED'}
 
 
-def _import_n3joint(context, filepath, lod, scale, skip_textures, skip_animations):
+def _import_n3joint(context, filepath, scale, skip_textures, skip_animations):
     """Import a standalone skeleton hierarchy."""
     from ..formats import n3joint as _n3joint
     from ..blender import armature_builder
@@ -447,7 +438,7 @@ def _import_n3joint(context, filepath, lod, scale, skip_textures, skip_animation
     return {'FINISHED'}
 
 
-def _import_n3anim(context, filepath, lod, scale, skip_textures, skip_animations):
+def _import_n3anim(context, filepath, scale, skip_textures, skip_animations):
     """Import animation metadata as a text block (no geometry to display).
 
     When imported standalone, animation metadata is stored in a text block for
@@ -477,7 +468,7 @@ def _import_n3anim(context, filepath, lod, scale, skip_textures, skip_animations
     return {'FINISHED'}
 
 
-def _import_n3pmesh(context, filepath, lod, scale, skip_textures, skip_animations):
+def _import_n3pmesh(context, filepath, scale, skip_textures, skip_animations):
     """Import a standalone progressive mesh (no texture)."""
     from ..formats import n3pmesh as _n3pmesh
     from ..blender import mesh_builder
@@ -592,10 +583,8 @@ def _setup_ambient_lighting(context):
         bg.inputs["Strength"].default_value = 0.3
 
 
-def _pick_lod(skins, lod: int):
-    """Return the requested LOD level, falling back to the first available."""
+def _pick_best_lod(skins):
+    """Return the highest-detail LOD (first non-None skin)."""
     if not skins:
         return None
-    if lod < len(skins) and skins[lod] is not None:
-        return skins[lod]
     return next((s for s in skins if s is not None), None)
